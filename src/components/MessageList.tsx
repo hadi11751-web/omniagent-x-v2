@@ -123,9 +123,13 @@ export default function MessageList({
                 </p>
               ) : null}
 
-              {!streaming && message.content ? (
+              {!streaming && !message.content && !message.error ? (
+                <p className="text-xs text-[var(--muted)]">No answer was generated. Try Regenerate.</p>
+              ) : null}
+
+              {!streaming && (message.content || message.id === lastAssistantId) ? (
                 <div className="flex items-center gap-2 pt-1">
-                  <CopyButton text={message.content} />
+                  {message.content ? <CopyButton text={message.content} /> : null}
                   {message.id === lastAssistantId ? (
                     <button
                       type="button"

@@ -40,6 +40,6 @@ export const geminiProvider: ChatProvider = {
         signal: request.signal,
       },
     );
-    yield* parseSseDeltas(response, pickDelta);
+    yield* parseSseDeltas(response, pickDelta, "Gemini");
   },
 };

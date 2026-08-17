@@ -9,6 +9,23 @@ export class UpstreamError extends Error {
   }
 }
 
+/**
+ * Some providers (Groq with gpt-oss models) abort a stream with an error object
+ * inside the event stream instead of an HTTP error. `failedGeneration` holds the
+ * generation the provider refused, which may contain a native tool call.
+ */
+export class StreamAbortedError extends Error {
+  constructor(
+    readonly provider: string,
+    readonly detail: string,
+    readonly code?: string,
+    readonly failedGeneration?: string,
+  ) {
+    super(`${provider} stopped the stream: ${detail}`);
+    this.name = "StreamAbortedError";
+  }
+}
+
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 export async function requestJson(
@@ -26,8 +43,8 @@ export async function requestJson(
   try {
     const response = await fetch(url, { ...rest, signal: controller.signal });
     if (!response.ok) {
-      const detail = (await response.text().catch(() => "")).slice(0, 500);
-      throw new UpstreamError(label, response.status, detail || response.statusText);
+      const raw = (await response.text().catch(() => "")).slice(0, 2000);
+      throw new UpstreamError(label, response.status, readableDetail(raw) || response.statusText);
     }
     return response;
   } finally {
@@ -39,6 +56,7 @@ export async function requestJson(
 export async function* parseSseDeltas(
   response: Response,
   pick: (payload: unknown) => string | undefined,
+  label = "provider",
 ): AsyncGenerator<string> {
   const body = response.body;
   if (!body) return;
@@ -62,8 +80,37 @@ export async function* parseSseDeltas(
       } catch {
         continue;
       }
+      const failure = streamError(payload);
+      if (failure) {
+        throw new StreamAbortedError(label, failure.message, failure.code, failure.failedGeneration);
+      }
       const delta = pick(payload);
       if (delta) yield delta;
     }
   }
+}
+
+/** Turns a provider error body into a single readable sentence. */
+function readableDetail(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: string } | string; message?: string };
+    const error = parsed.error;
+    const message =
+      typeof error === "string" ? error : error?.message ?? parsed.message ?? undefined;
+    if (message) return message.slice(0, 300);
+  } catch {
+    // not JSON, fall through
+  }
+  return raw.slice(0, 300);
+}
+
+function streamError(payload: unknown) {
+  const error = (payload as { error?: unknown }).error;
+  if (!error || typeof error !== "object") return undefined;
+  const detail = error as { message?: string; code?: string; failed_generation?: string };
+  return {
+    message: detail.message ?? "unknown provider error",
+    code: detail.code,
+    failedGeneration: detail.failed_generation,
+  };
 }
