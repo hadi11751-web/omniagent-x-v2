@@ -21,7 +21,6 @@ const SUGGESTIONS = [
 export default function OmniAgentApp() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState("general");
   const [activeId, setActiveId] = useState<string | undefined>(undefined);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [status, setStatus] = useState<ServerStatus | undefined>(undefined);
@@ -69,6 +68,8 @@ export default function OmniAgentApp() {
   useEffect(() => {
     if (loaded) storage.saveProjects(projects);
   }, [projects, loaded]);
+
+  const activeProjectId = settings.projectId;
 
   const visibleConversations = useMemo(
     () => conversations.filter((conversation) => conversation.projectId === activeProjectId),
@@ -266,7 +267,7 @@ export default function OmniAgentApp() {
         }}
         onDelete={deleteConversation}
         onSelectProject={(id) => {
-          setActiveProjectId(id);
+          patchSettings({ projectId: id });
           setActiveId(undefined);
         }}
         onOpenSettings={() => setSettingsOpen(true)}

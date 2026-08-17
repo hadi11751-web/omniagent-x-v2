@@ -29,6 +29,7 @@ export function toolInstructions(tools: ToolDefinition[]): string {
     "TOOL: <name> | <argument>",
     "The tool result is then given back to you, and you answer the user using it.",
     "Call a tool only when it genuinely helps. Never invent a tool result.",
+    "Do not use function calls or JSON tool payloads; the line above is the only supported form.",
     "Available tools:",
     ...tools.map((tool) => `- ${tool.name}: ${tool.description} Argument: ${tool.argument}.`),
   ].join("\n");
@@ -40,4 +41,39 @@ export function parseToolCall(text: string): { name: string; argument: string } 
   const match = text.trim().match(CALL_PATTERN);
   if (!match) return undefined;
   return { name: match[1].toLowerCase(), argument: match[2].trim() };
+}
+
+const ARGUMENT_KEYS = ["query", "expression", "url", "text", "prompt", "input"];
+
+/**
+ * Some models emit a native OpenAI-style tool call
+ * (`{"name":"web_search","arguments":{"query":"..."}}`) instead of the text
+ * protocol. This maps such a payload onto the registry.
+ */
+export function parseNativeToolCall(raw: string | undefined): { name: string; argument: string } | undefined {
+  if (!raw) return undefined;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const call = payload as { name?: unknown; arguments?: unknown };
+  if (typeof call.name !== "string") return undefined;
+  let args: unknown = call.arguments;
+  if (typeof args === "string") {
+    const text = args;
+    try {
+      args = JSON.parse(text);
+    } catch {
+      return { name: call.name.toLowerCase(), argument: text.trim() };
+    }
+  }
+  if (!args || typeof args !== "object") return undefined;
+  const entries = Object.entries(args as Record<string, unknown>).filter(
+    ([, value]) => typeof value === "string" && value.trim().length > 0,
+  ) as [string, string][];
+  if (!entries.length) return undefined;
+  const preferred = entries.find(([key]) => ARGUMENT_KEYS.includes(key.toLowerCase())) ?? entries[0];
+  return { name: call.name.toLowerCase(), argument: preferred[1].trim() };
 }

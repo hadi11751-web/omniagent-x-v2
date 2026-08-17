@@ -1,8 +1,15 @@
+import { StreamAbortedError } from "@/lib/http";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/models";
 import { availableModels, providerFor } from "@/lib/providers";
 import { routeModel } from "@/lib/router";
 import { collectText, createEventStream, type StreamEvent } from "@/lib/stream";
-import { availableTools, findTool, parseToolCall, toolInstructions } from "@/lib/tools";
+import {
+  availableTools,
+  findTool,
+  parseNativeToolCall,
+  parseToolCall,
+  toolInstructions,
+} from "@/lib/tools";
 import { searchWeb } from "@/lib/tools/webSearch";
 import type { ChatMessage, ChatProvider, ModelInfo, Source } from "@/lib/types";
 
@@ -78,6 +85,7 @@ export async function POST(request: Request) {
   const systemParts = [DEFAULT_SYSTEM_PROMPT];
   if (body.projectContext?.trim()) systemParts.push(`Project context:\n${body.projectContext.trim()}`);
   if (body.memory?.trim()) systemParts.push(`Long-term memory the user saved:\n${body.memory.trim()}`);
+  const systemWithoutTools = systemParts.join("\n\n");
   if (tools.length) systemParts.push(toolInstructions(tools));
 
   const baseMessages: ChatMessage[] = [
@@ -111,7 +119,15 @@ export async function POST(request: Request) {
       await runAgentPlan(provider, model, lastUser, conversation, emit, signal);
     }
 
-    await streamWithTools(provider, model.id, conversation, tools.length > 0, emit, signal);
+    await streamWithTools(
+      provider,
+      model.id,
+      conversation,
+      tools.length > 0,
+      systemWithoutTools,
+      emit,
+      signal,
+    );
   });
 }
 
@@ -244,6 +260,11 @@ async function runAgentPlan(
     .filter((match): match is RegExpMatchArray => Boolean(match))
     .slice(0, 3);
 
+  if (!steps.length) {
+    emit({ type: "status", text: "Planner produced no usable steps; answering directly." });
+    return;
+  }
+
   for (const [, name, argument] of steps) {
     const tool = findTool(name.toLowerCase());
     if (!tool) continue;
@@ -287,47 +308,79 @@ async function streamWithTools(
   modelId: string,
   conversation: ChatMessage[],
   toolsEnabled: boolean,
+  systemWithoutTools: string,
   emit: (event: StreamEvent) => void,
   signal: AbortSignal,
 ) {
+  let toolsAllowed = toolsEnabled;
+
   for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
     const isLastStep = step === MAX_TOOL_STEPS - 1;
-    const allowTools = toolsEnabled && !isLastStep;
+    const allowTools = toolsAllowed && !isLastStep;
     let held = allowTools;
     let buffer = "";
     let emitted = false;
+    let call: { name: string; argument: string } | undefined;
 
-    for await (const chunk of provider.stream({ model: modelId, messages: conversation, signal })) {
-      if (!held) {
+    try {
+      for await (const chunk of provider.stream({ model: modelId, messages: conversation, signal })) {
+        if (!held) {
+          emitted = true;
+          emit({ type: "delta", text: chunk });
+          continue;
+        }
+        buffer += chunk;
+        const trimmed = buffer.trimStart();
+        if (trimmed.length < 5) continue;
+        if (/^tool:/i.test(trimmed)) continue;
+        held = false;
         emitted = true;
-        emit({ type: "delta", text: chunk });
-        continue;
+        emit({ type: "delta", text: buffer });
+        buffer = "";
       }
-      buffer += chunk;
-      const trimmed = buffer.trimStart();
-      if (trimmed.length < 5) continue;
-      if (/^tool:/i.test(trimmed)) continue;
-      held = false;
-      emitted = true;
-      emit({ type: "delta", text: buffer });
-      buffer = "";
+    } catch (error) {
+      if (signal.aborted) return;
+      // Models that were trained for native tool calls sometimes emit one, and
+      // the provider then aborts the stream. Run the requested tool instead of
+      // leaving the answer blank.
+      const aborted = error instanceof StreamAbortedError ? error : undefined;
+      const native = aborted ? parseNativeToolCall(aborted.failedGeneration) : undefined;
+      if (!native || emitted) {
+        if (emitted) emit({ type: "error", message: (error as Error).message });
+        else if (!(await retryWithoutTools(provider, modelId, conversation, systemWithoutTools, emit, signal))) {
+          emit({ type: "error", message: (error as Error).message });
+        }
+        return;
+      }
+      call = native;
+      buffer = `TOOL: ${native.name} | ${native.argument}`;
     }
 
-    if (!held) {
+    if (!call && !held) {
       if (buffer) emit({ type: "delta", text: buffer });
-      if (!emitted) emit({ type: "status", text: "The model returned an empty response." });
+      else if (!emitted && !(await retryWithoutTools(provider, modelId, conversation, systemWithoutTools, emit, signal))) {
+        emit({ type: "status", text: "The model returned an empty response." });
+      }
       return;
     }
 
-    const call = parseToolCall(buffer);
     if (!call) {
-      if (buffer.trim()) emit({ type: "delta", text: buffer });
-      return;
+      call = parseToolCall(buffer);
+      if (!call) {
+        if (buffer.trim()) {
+          emit({ type: "delta", text: buffer });
+        } else if (!(await retryWithoutTools(provider, modelId, conversation, systemWithoutTools, emit, signal))) {
+          emit({ type: "status", text: "The model returned an empty response." });
+        }
+        return;
+      }
     }
+
     const tool = findTool(call.name);
     if (!tool) {
       conversation.push({ role: "assistant", content: buffer.trim() });
       conversation.push({ role: "system", content: `Tool "${call.name}" does not exist. Answer without tools.` });
+      toolsAllowed = false;
       continue;
     }
     emit({ type: "status", text: `Running ${tool.name}...` });
@@ -339,4 +392,42 @@ async function streamWithTools(
       content: `Result of ${tool.name}(${call.argument}):\n${result.content}\nNow answer the user. Do not call another tool unless it is essential.`,
     });
   }
+
+  // Every step ran a tool and none produced an answer: ask once more, tool-free.
+  if (!(await retryWithoutTools(provider, modelId, conversation, systemWithoutTools, emit, signal))) {
+    emit({ type: "status", text: "The model returned an empty response." });
+  }
+}
+
+/**
+ * Last resort when a tool-enabled turn produced no visible text: ask again with
+ * the tool protocol removed, so the user always gets an answer.
+ * Returns true when some text was streamed.
+ */
+async function retryWithoutTools(
+  provider: ChatProvider,
+  modelId: string,
+  conversation: ChatMessage[],
+  systemWithoutTools: string,
+  emit: (event: StreamEvent) => void,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const messages: ChatMessage[] = conversation.map((message, index) =>
+    index === 0 && message.role === "system" ? { role: "system", content: systemWithoutTools } : message,
+  );
+  if (signal.aborted) return true;
+  emit({ type: "status", text: "Answering without tools..." });
+  let emitted = false;
+  try {
+    for await (const chunk of provider.stream({ model: modelId, messages, signal })) {
+      emitted = true;
+      emit({ type: "delta", text: chunk });
+    }
+  } catch (error) {
+    if (!emitted) {
+      emit({ type: "error", message: (error as Error).message });
+      return true;
+    }
+  }
+  return emitted;
 }

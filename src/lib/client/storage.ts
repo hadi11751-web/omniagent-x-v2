@@ -16,6 +16,7 @@ export const DEFAULT_PROJECTS: Project[] = [
 
 export const DEFAULT_SETTINGS: Settings = {
   model: "",
+  projectId: "general",
   mode: "chat",
   autoRoute: false,
   toolsEnabled: true,
