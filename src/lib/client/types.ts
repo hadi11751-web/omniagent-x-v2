@@ -37,6 +37,7 @@ export interface Project {
 
 export interface Settings {
   model: string;
+  projectId: string;
   mode: Mode;
   autoRoute: boolean;
   toolsEnabled: boolean;

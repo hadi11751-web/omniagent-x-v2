@@ -48,7 +48,7 @@ export function createOpenAiCompatibleProvider(config: {
         }),
         signal: request.signal,
       });
-      yield* parseSseDeltas(response, pickDelta);
+      yield* parseSseDeltas(response, pickDelta, config.label);
     },
   };
 }
