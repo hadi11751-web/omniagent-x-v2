@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useUser, UserButton } from "@clerk/nextjs";
 import { CloseIcon, GearIcon, PlusIcon, TrashIcon } from "./Icons";
 import type { Conversation, Project, ServerStatus } from "@/lib/client/types";
 
@@ -150,6 +152,7 @@ export default function Sidebar({
           </div>
         </div>
 
+        <AccountRow />
         <button
           type="button"
           onClick={onOpenSettings}
@@ -162,3 +165,47 @@ export default function Sidebar({
     </>
   );
 }
+
+function AccountRow() {
+  const { user, isLoaded } = useUser();
+  const [loadingCheckout, setLoadingCheckout] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!isLoaded || !user) return null;
+
+  const plan = user.publicMetadata?.plan === "paid" ? "paid" : "free";
+
+  const upgrade = async () => {
+    setError(null);
+    setLoadingCheckout(true);
+    try {
+      const response = await fetch("/api/stripe/checkout", { method: "POST" });
+      const data = (await response.json()) as { url?: string; error?: string };
+      if (!response.ok || !data.url) throw new Error(data.error ?? "couldn't start checkout");
+      window.location.href = data.url;
+    } catch (err) {
+      setError((err as Error).message);
+      setLoadingCheckout(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] px-4 py-3">
+      <div className="flex items-center gap-2">
+        <UserButton />
+        <span className="text-xs text-[var(--muted)]">{plan === "paid" ? "Paid plan" : "Free plan"}</span>
+      </div>
+      {plan === "free" ? (
+        <button
+          type="button"
+          onClick={upgrade}
+          disabled={loadingCheckout}
+          className="rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent2)] px-3 py-1 text-xs font-medium text-black disabled:opacity-50"
+        >
+          {loadingCheckout ? "Loading..." : "Upgrade"}
+        </button>
+      ) : null}
+      {error ? <span className="text-xs text-red-400">{error}</span> : null}
+    </div>
+  );
+}
+

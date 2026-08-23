@@ -1,6 +1,7 @@
 import { StreamAbortedError } from "@/lib/http";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/models";
 import { availableModels, providerFor } from "@/lib/providers";
+import { checkAndConsumeQuota } from "@/lib/quota";
 import { routeModel } from "@/lib/router";
 import { collectText, createEventStream, type StreamEvent } from "@/lib/stream";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/lib/tools";
 import { searchWeb } from "@/lib/tools/webSearch";
 import type { ChatMessage, ChatProvider, ModelInfo, Source } from "@/lib/types";
+import { auth } from "@clerk/nextjs/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -44,6 +46,22 @@ function toolData(data: unknown) {
 }
 
 export async function POST(request: Request) {
+  const { userId } = await auth();
+  // Middleware already requires sign-in for this route, so userId should
+  // always exist here — this check is just defense in depth.
+  if (!userId) return Response.json({ error: "not signed in" }, { status: 401 });
+
+  const quota = await checkAndConsumeQuota(userId);
+  if (!quota.allowed) {
+    return Response.json(
+      {
+        error: `You've used today's ${quota.limit} free messages. Upgrade for unlimited access, or come back tomorrow.`,
+        upgradeRequired: true,
+      },
+      { status: 429 },
+    );
+  }
+
   let body: Body;
   try {
     body = (await request.json()) as Body;
