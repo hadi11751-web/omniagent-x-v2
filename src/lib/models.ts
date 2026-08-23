@@ -3,6 +3,9 @@ import type { ModelInfo } from "@/lib/types";
 /**
  * Curated catalogue. A model only shows up in the UI when its provider has
  * credentials configured on the server (see `availableModels`).
+ *
+ * Every ID below was checked against each provider's own current docs
+ * (Aug 2026) to avoid shipping already-deprecated model names.
  */
 export const MODELS: ModelInfo[] = [
   {
@@ -20,30 +23,32 @@ export const MODELS: ModelInfo[] = [
     capabilities: ["reasoning", "research"],
   },
   {
-    id: "meta-llama/llama-4-scout-17b-16e-instruct",
-    label: "Llama 4 Scout Vision (Groq)",
-    provider: "groq",
-    execution: "cloud",
-    capabilities: ["fast"],
-    vision: true,
-  },
-  {
+    // Groq deprecated meta-llama/llama-4-scout-17b-16e-instruct on
+    // 2026-03-23. qwen/qwen3.6-27b is Groq's own recommended replacement
+    // and is also their current vision-capable model.
     id: "qwen/qwen3.6-27b",
-    label: "Qwen 3.6 27B (Groq)",
+    label: "Qwen 3.6 27B Vision (Groq)",
     provider: "groq",
     execution: "cloud",
     capabilities: ["coding", "reasoning"],
+    vision: true,
   },
   {
-    id: "gemini-2.0-flash",
-    label: "Gemini 2.0 Flash",
+    // Google retired gemini-2.0-flash; gemini-3.6-flash is the current
+    // stable Flash-tier model as of Aug 2026.
+    id: "gemini-3.6-flash",
+    label: "Gemini 3.6 Flash",
     provider: "gemini",
     execution: "cloud",
     capabilities: ["fast", "research", "reasoning"],
   },
   {
-    id: "deepseek/deepseek-chat-v3-0324:free",
-    label: "DeepSeek V3 (OpenRouter)",
+    // OpenRouter's free-tier lineup rotates constantly and DeepSeek
+    // currently has zero $0 models there. "openrouter/free" is their own
+    // auto-router that always resolves to whatever's free right now,
+    // instead of a specific ID that can silently die.
+    id: "openrouter/free",
+    label: "Auto (Free tier, OpenRouter)",
     provider: "openrouter",
     execution: "cloud",
     capabilities: ["coding", "reasoning"],
@@ -71,4 +76,3 @@ export const DEFAULT_SYSTEM_PROMPT = [
   "You never have live web access unless a tool result in the conversation provides it;",
   "in that case cite the given sources.",
 ].join(" ");
-
