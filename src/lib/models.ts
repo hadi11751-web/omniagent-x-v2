@@ -20,6 +20,14 @@ export const MODELS: ModelInfo[] = [
     capabilities: ["reasoning", "research"],
   },
   {
+    id: "meta-llama/llama-4-scout-17b-16e-instruct",
+    label: "Llama 4 Scout Vision (Groq)",
+    provider: "groq",
+    execution: "cloud",
+    capabilities: ["fast"],
+    vision: true,
+  },
+  {
     id: "qwen/qwen3.6-27b",
     label: "Qwen 3.6 27B (Groq)",
     provider: "groq",
@@ -63,3 +71,4 @@ export const DEFAULT_SYSTEM_PROMPT = [
   "You never have live web access unless a tool result in the conversation provides it;",
   "in that case cite the given sources.",
 ].join(" ");
+

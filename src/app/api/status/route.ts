@@ -20,6 +20,8 @@ export function GET() {
     models: availableModels(),
     tools: availableTools().map((tool) => ({ name: tool.name, description: tool.description })),
     imageGeneration: imageGenerationAvailable(),
+    voiceInput: Boolean(process.env.GROQ_API_KEY),
+    visionInput: availableModels().some((m) => m.vision),
     searchEngine: process.env.TAVILY_API_KEY
       ? "Tavily"
       : process.env.BRAVE_API_KEY
@@ -27,3 +29,4 @@ export function GET() {
         : "DuckDuckGo (keyless fallback)",
   });
 }
+

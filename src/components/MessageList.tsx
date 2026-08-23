@@ -97,6 +97,18 @@ export default function MessageList({
                 />
               ))}
 
+              {message.files?.map((file, index) => (
+                <a
+                  key={`${message.id}-file-${index}`}
+                  href={file.dataUrl}
+                  download={file.filename}
+                  className="flex w-fit items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs font-medium hover:border-[var(--accent)]"
+                >
+                  📄 {file.filename}
+                  <span className="text-[var(--muted)]">Download</span>
+                </a>
+              ))}
+
               {message.sources?.length ? (
                 <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
                   <p className="mb-1 text-xs uppercase tracking-wide text-[var(--muted)]">Sources</p>
@@ -152,3 +164,4 @@ export default function MessageList({
     </div>
   );
 }
+

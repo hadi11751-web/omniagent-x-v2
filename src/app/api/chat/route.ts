@@ -35,7 +35,11 @@ function badRequest(message: string) {
 }
 
 function toolData(data: unknown) {
-  const payload = (data ?? {}) as { sources?: Source[]; image?: string };
+  const payload = (data ?? {}) as {
+    sources?: Source[];
+    image?: string;
+    file?: { dataUrl: string; filename: string };
+  };
   return payload;
 }
 
@@ -48,7 +52,8 @@ export async function POST(request: Request) {
   }
 
   const history = (body.messages ?? []).filter(
-    (message) => typeof message?.content === "string" && message.content.trim().length > 0,
+    (message) =>
+      typeof message?.content === "string" && (message.content.trim().length > 0 || (message.images?.length ?? 0) > 0),
   );
   if (!history.length) return badRequest("messages must contain at least one entry");
 
@@ -64,7 +69,9 @@ export async function POST(request: Request) {
   }
 
   const mode: Mode = body.mode ?? "chat";
-  const lastUser = [...history].reverse().find((message) => message.role === "user")?.content ?? "";
+  const lastUserMessage = [...history].reverse().find((message) => message.role === "user");
+  const lastUser = lastUserMessage?.content ?? "";
+  const hasImages = Boolean(lastUserMessage?.images?.length);
 
   let model: ModelInfo | undefined;
   let capability: string | undefined;
@@ -75,6 +82,18 @@ export async function POST(request: Request) {
   } else {
     model = models.find((candidate) => candidate.id === body.model) ?? models[0];
   }
+
+  let switchedForVision = false;
+  if (hasImages && !model?.vision) {
+    const visionModel = models.find((candidate) => candidate.vision);
+    if (visionModel) {
+      model = visionModel;
+      switchedForVision = true;
+    } else {
+      return badRequest("no vision-capable model is configured (add GROQ_API_KEY to enable image understanding)");
+    }
+  }
+
   if (!model) return badRequest("no usable model");
   const provider = providerFor(model.id);
   if (!provider) return badRequest(`no provider for model ${model.id}`);
@@ -102,6 +121,9 @@ export async function POST(request: Request) {
       capability,
       mode,
     });
+    if (switchedForVision) {
+      emit({ type: "status", text: `Switched to ${model.label} to read the attached image.` });
+    }
 
     const signal = request.signal;
     const conversation = [...baseMessages];
@@ -297,6 +319,7 @@ function emitToolResult(
   const payload = toolData(data);
   if (payload.sources?.length) emit({ type: "sources", sources: payload.sources });
   if (payload.image) emit({ type: "image", dataUrl: payload.image });
+  if (payload.file) emit({ type: "file", dataUrl: payload.file.dataUrl, filename: payload.file.filename });
 }
 
 /**
@@ -431,3 +454,4 @@ async function retryWithoutTools(
   }
   return emitted;
 }
+

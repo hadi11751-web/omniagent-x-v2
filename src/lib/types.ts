@@ -21,11 +21,15 @@ export interface ModelInfo {
   provider: ProviderId;
   execution: Execution;
   capabilities: Capability[];
+  /** True for models that can accept image input (screenshots, photos, etc). */
+  vision?: boolean;
 }
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  /** Data URLs of images attached to this message, for vision-capable models. */
+  images?: string[];
 }
 
 export interface ChatRequest {
@@ -66,3 +70,4 @@ export interface Source {
   url: string;
   snippet?: string;
 }
+

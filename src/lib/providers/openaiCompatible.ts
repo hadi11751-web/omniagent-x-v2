@@ -1,5 +1,5 @@
 import { parseSseDeltas, requestJson } from "@/lib/http";
-import type { ChatRequest, Execution, ProviderId } from "@/lib/types";
+import type { ChatMessage, ChatRequest, Execution, ProviderId } from "@/lib/types";
 
 interface OpenAiChunk {
   choices?: { delta?: { content?: string | null } }[];
@@ -8,6 +8,24 @@ interface OpenAiChunk {
 function pickDelta(payload: unknown): string | undefined {
   const chunk = payload as OpenAiChunk;
   return chunk.choices?.[0]?.delta?.content ?? undefined;
+}
+
+/**
+ * Most models only accept a plain string for `content`. Vision-capable
+ * requests need `content` to be an array of text/image parts instead, per
+ * the OpenAI-compatible schema Groq (and others) implement. Only switch to
+ * the array form when a message actually carries images, so every existing
+ * text-only request is untouched.
+ */
+function toWireMessage(message: ChatMessage) {
+  if (!message.images?.length) return { role: message.role, content: message.content };
+  return {
+    role: message.role,
+    content: [
+      { type: "text", text: message.content },
+      ...message.images.map((url) => ({ type: "image_url", image_url: { url } })),
+    ],
+  };
 }
 
 /**
@@ -42,7 +60,7 @@ export function createOpenAiCompatibleProvider(config: {
         },
         body: JSON.stringify({
           model: request.model,
-          messages: request.messages,
+          messages: request.messages.map(toWireMessage),
           temperature: request.temperature ?? 0.7,
           stream: true,
         }),
@@ -52,3 +70,4 @@ export function createOpenAiCompatibleProvider(config: {
     },
   };
 }
+

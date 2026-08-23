@@ -7,6 +7,7 @@ export type StreamEvent =
   | { type: "tool"; name: string; argument: string; ok: boolean; summary: string }
   | { type: "sources"; sources: Source[] }
   | { type: "image"; dataUrl: string }
+  | { type: "file"; dataUrl: string; filename: string }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -51,3 +52,4 @@ export async function collectText(
   for await (const chunk of provider.stream({ model, messages, signal })) text += chunk;
   return text.trim();
 }
+

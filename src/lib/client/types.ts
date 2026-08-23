@@ -15,6 +15,7 @@ export interface UiMessage {
   content: string;
   sources?: Source[];
   images?: string[];
+  files?: { dataUrl: string; filename: string }[];
   tools?: ToolTrace[];
   status?: string[];
   error?: string;
@@ -51,5 +52,8 @@ export interface ServerStatus {
   models: ModelInfo[];
   tools: { name: string; description: string }[];
   imageGeneration: boolean;
+  voiceInput: boolean;
+  visionInput: boolean;
   searchEngine: string;
 }
+

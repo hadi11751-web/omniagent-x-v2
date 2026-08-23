@@ -113,6 +113,7 @@ export default function OmniAgentApp() {
       const payload: ChatMessage[] = history.map((message) => ({
         role: message.role,
         content: message.content,
+        images: message.images,
       }));
 
       try {
@@ -160,6 +161,12 @@ export default function OmniAgentApp() {
               case "image":
                 patch((message) => ({ ...message, images: [...(message.images ?? []), event.dataUrl] }));
                 break;
+              case "file":
+                patch((message) => ({
+                  ...message,
+                  files: [...(message.files ?? []), { dataUrl: event.dataUrl, filename: event.filename }],
+                }));
+                break;
               case "error":
                 patch((message) => ({ ...message, error: event.message }));
                 break;
@@ -181,12 +188,17 @@ export default function OmniAgentApp() {
   );
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, image?: string) => {
       const content = text.trim();
-      if (!content || streaming) return;
+      if ((!content && !image) || streaming) return;
       setInput("");
 
-      const userMessage: UiMessage = { id: newId(), role: "user", content };
+      const userMessage: UiMessage = {
+        id: newId(),
+        role: "user",
+        content: content || "What's in this image?",
+        images: image ? [image] : undefined,
+      };
       let conversationId = activeId;
       let history: UiMessage[] = [];
 
@@ -355,7 +367,7 @@ export default function OmniAgentApp() {
         <Composer
           value={input}
           onChange={setInput}
-          onSend={() => send(input)}
+          onSend={(image) => send(input, image)}
           onStop={stop}
           streaming={streaming}
           mode={settings.mode}
@@ -384,3 +396,4 @@ export default function OmniAgentApp() {
     </div>
   );
 }
+

@@ -138,6 +138,8 @@ export default function SettingsPanel({
                 <li>Models: {status.models.length}</li>
                 <li>Tools: {status.tools.map((tool) => tool.name).join(", ")}</li>
                 <li>Image generation: {status.imageGeneration ? "available" : "not configured"}</li>
+                <li>Voice input: {status.voiceInput ? "available" : "not configured"}</li>
+                <li>Image/screenshot understanding: {status.visionInput ? "available" : "not configured"}</li>
                 <li>Search: {status.searchEngine}</li>
               </ul>
             ) : (
@@ -149,3 +151,4 @@ export default function SettingsPanel({
     </div>
   );
 }
+
