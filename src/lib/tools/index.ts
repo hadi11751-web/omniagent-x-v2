@@ -3,6 +3,7 @@ import { calculatorTool } from "./calculator";
 import { fetchUrlTool } from "./fetchUrl";
 import { generateImageTool, imageGenerationAvailable } from "./generateImage";
 import { generatePdfTool } from "./generatePdf";
+import { inspectPdfTool } from "./inspectPdf";
 import { webSearchTool } from "./webSearch";
 import type { ToolDefinition } from "@/lib/types";
 
@@ -13,6 +14,7 @@ const ALL_TOOLS: ToolDefinition[] = [
   analyzeTextTool,
   generateImageTool,
   generatePdfTool,
+  inspectPdfTool,
 ];
 
 export function availableTools(): ToolDefinition[] {
