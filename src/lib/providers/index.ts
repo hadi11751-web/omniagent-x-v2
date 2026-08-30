@@ -1,3 +1,4 @@
+import { anthropicProvider } from "./anthropic";
 import { geminiProvider } from "./gemini";
 import { huggingFaceProvider } from "./huggingface";
 import { createOpenAiCompatibleProvider } from "./openaiCompatible";
@@ -41,6 +42,7 @@ export const PROVIDERS: Record<ProviderId, ChatProvider> = {
   openrouter: openRouterProvider,
   huggingface: huggingFaceProvider,
   ollama: ollamaProvider,
+  anthropic: anthropicProvider,
 };
 
 export function configuredProviders(): ChatProvider[] {
@@ -59,3 +61,4 @@ export function providerFor(modelId: string): ChatProvider | undefined {
   const model = findModel(modelId);
   return model ? PROVIDERS[model.provider] : undefined;
 }
+

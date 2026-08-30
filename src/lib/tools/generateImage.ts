@@ -13,7 +13,10 @@ export async function generateImage(prompt: string): Promise<string> {
   if (!key) throw new Error("image generation needs HUGGINGFACE_API_KEY in .env.local");
   const response = await requestJson(
     "Hugging Face image",
-    `https://api-inference.huggingface.co/models/${HF_MODEL}`,
+    // api-inference.huggingface.co was permanently decommissioned (returns
+    // 410 Gone as of late 2025). router.huggingface.co/hf-inference is its
+    // direct replacement, per Hugging Face's own migration guidance.
+    `https://router.huggingface.co/hf-inference/models/${HF_MODEL}`,
     {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
@@ -46,3 +49,4 @@ export const generateImageTool: ToolDefinition = {
     }
   },
 };
+

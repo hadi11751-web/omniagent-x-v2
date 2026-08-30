@@ -67,6 +67,27 @@ export const MODELS: ModelInfo[] = [
     execution: "local",
     capabilities: ["private", "fast"],
   },
+  {
+    id: "claude-haiku-4-5-20251001",
+    label: "Claude Haiku 4.5 (Anthropic)",
+    provider: "anthropic",
+    execution: "cloud",
+    capabilities: ["fast"],
+  },
+  {
+    id: "claude-sonnet-5",
+    label: "Claude Sonnet 5 (Anthropic)",
+    provider: "anthropic",
+    execution: "cloud",
+    capabilities: ["coding", "reasoning", "research"],
+  },
+  {
+    id: "claude-opus-4-8",
+    label: "Claude Opus 4.8 (Anthropic)",
+    provider: "anthropic",
+    execution: "cloud",
+    capabilities: ["reasoning", "research"],
+  },
 ];
 
 export const DEFAULT_SYSTEM_PROMPT = [
@@ -76,3 +97,4 @@ export const DEFAULT_SYSTEM_PROMPT = [
   "You never have live web access unless a tool result in the conversation provides it;",
   "in that case cite the given sources.",
 ].join(" ");
+

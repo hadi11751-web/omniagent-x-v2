@@ -3,7 +3,8 @@ export type ProviderId =
   | "gemini"
   | "openrouter"
   | "huggingface"
-  | "ollama";
+  | "ollama"
+  | "anthropic";
 
 export type Execution = "cloud" | "local";
 
