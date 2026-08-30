@@ -1,30 +1,35 @@
-import { requestJson } from "@/lib/http";
 import type { ToolDefinition } from "@/lib/types";
 
-const HF_MODEL = "black-forest-labs/FLUX.1-schnell";
-
+/**
+ * Pollinations.ai is a genuinely free, key-less image generation API:
+ * https://image.pollinations.ai/prompt/<url-encoded prompt> returns the
+ * image bytes directly over a plain GET, no auth headers, no account, no
+ * billing page. This replaces the old Hugging Face implementation, which
+ * required navigating Hugging Face's Inference Providers permissions and
+ * billing requirements for what's meant to be a simple free feature.
+ */
 export function imageGenerationAvailable(): boolean {
-  return Boolean(process.env.HUGGINGFACE_API_KEY);
+  return true;
 }
 
 /** Returns a data URL so the browser can render the image without extra storage. */
 export async function generateImage(prompt: string): Promise<string> {
-  const key = process.env.HUGGINGFACE_API_KEY;
-  if (!key) throw new Error("image generation needs HUGGINGFACE_API_KEY in .env.local");
-  const response = await requestJson(
-    "Hugging Face image",
-    // api-inference.huggingface.co was permanently decommissioned (returns
-    // 410 Gone as of late 2025). router.huggingface.co/hf-inference is its
-    // direct replacement, per Hugging Face's own migration guidance.
-    `https://router.huggingface.co/hf-inference/models/${HF_MODEL}`,
-    {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ inputs: prompt }),
-      timeoutMs: 120_000,
-    },
-  );
-  const contentType = response.headers.get("content-type") ?? "image/png";
+  const encoded = encodeURIComponent(prompt.trim());
+  const url = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Pollinations image request failed (${response.status})`);
+  }
+  const contentType = response.headers.get("content-type") ?? "image/jpeg";
   const buffer = Buffer.from(await response.arrayBuffer());
   if (!contentType.startsWith("image/")) {
     throw new Error(`provider returned ${contentType} instead of an image`);
@@ -49,4 +54,3 @@ export const generateImageTool: ToolDefinition = {
     }
   },
 };
-
