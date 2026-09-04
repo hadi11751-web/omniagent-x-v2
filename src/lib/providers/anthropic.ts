@@ -51,19 +51,21 @@ export const anthropicProvider: ChatProvider = {
       }));
 
     const isOpus5 = request.model === "claude-opus-5";
-    const isClaude5 =
-      request.model === "claude-opus-5" ||
-      request.model === "claude-sonnet-5";
+    const isOpus48 = request.model === "claude-opus-4-8";
+    const isSonnet5 = request.model === "claude-sonnet-5";
+
+    const adaptiveThinking =
+      isOpus5 || isOpus48 || isSonnet5;
 
     const body: Record<string, unknown> = {
       model: request.model,
       system: system || undefined,
       messages,
-      max_tokens: isClaude5 ? 64000 : 4096,
+      max_tokens: adaptiveThinking ? 64000 : 4096,
       stream: true,
     };
 
-    if (isClaude5) {
+    if (adaptiveThinking) {
       body.thinking = {
         type: "adaptive",
       };
