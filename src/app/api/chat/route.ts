@@ -1,4 +1,6 @@
 import { StreamAbortedError } from "@/lib/http";
+import { runAgentPlan } from "@/lib/agent";
+import { getRelevantMemories } from "@/lib/server/memory";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/models";
 import { availableModels, providerFor } from "@/lib/providers";
 import { checkAndConsumeQuota } from "@/lib/quota";
@@ -48,7 +50,7 @@ function toolData(data: unknown) {
 export async function POST(request: Request) {
   const { userId } = await auth();
   // Middleware already requires sign-in for this route, so userId should
-  // always exist here — this check is just defense in depth.
+  // always exist here ΓÇö this check is just defense in depth.
   if (!userId) return Response.json({ error: "not signed in" }, { status: 401 });
 
   const quota = await checkAndConsumeQuota(userId);
@@ -122,6 +124,16 @@ export async function POST(request: Request) {
   const systemParts = [DEFAULT_SYSTEM_PROMPT];
   if (body.projectContext?.trim()) systemParts.push(`Project context:\n${body.projectContext.trim()}`);
   if (body.memory?.trim()) systemParts.push(`Long-term memory the user saved:\n${body.memory.trim()}`);
+  try {
+    const automaticMemories = await getRelevantMemories(userId, lastUser);
+    if (automaticMemories.length) {
+      systemParts.push(
+        `Automatically remembered from previous chats:\n${automaticMemories.map((memory) => `- ${memory.fact}`).join("\n")}`,
+      );
+    }
+  } catch (error) {
+    console.error("automatic_memory_retrieval_failed", error);
+  }
   const systemWithoutTools = systemParts.join("\n\n");
   if (tools.length) systemParts.push(toolInstructions(tools));
 
@@ -163,7 +175,7 @@ export async function POST(request: Request) {
       provider,
       model.id,
       conversation,
-      tools.length > 0,
+      mode === "agent" ? false : tools.length > 0,
       systemWithoutTools,
       emit,
       signal,
@@ -255,68 +267,6 @@ async function runBlend(
   for await (const chunk of primaryProvider.stream({ model: primary.id, messages: synthesis, signal })) {
     emit({ type: "delta", text: chunk });
   }
-}
-
-async function runAgentPlan(
-  provider: ChatProvider,
-  model: ModelInfo,
-  goal: string,
-  conversation: ChatMessage[],
-  emit: (event: StreamEvent) => void,
-  signal: AbortSignal,
-) {
-  const tools = availableTools();
-  if (!tools.length) return;
-  emit({ type: "status", text: "Planning..." });
-  const planPrompt: ChatMessage[] = [
-    {
-      role: "system",
-      content: [
-        "You are the planner of a controlled agent. Break the goal into at most 3 steps.",
-        "Each line must be exactly: STEP: <tool> | <argument>",
-        `Allowed tools: ${tools.map((tool) => tool.name).join(", ")}.`,
-        "If no tool is needed, answer exactly: NO_TOOLS.",
-        "Never plan destructive or irreversible actions.",
-      ].join("\n"),
-    },
-    { role: "user", content: goal },
-  ];
-
-  let plan = "";
-  try {
-    plan = await collectText(provider, model.id, planPrompt, signal);
-  } catch (error) {
-    emit({ type: "status", text: `Planner failed, answering directly: ${(error as Error).message}` });
-    return;
-  }
-  if (/NO_TOOLS/i.test(plan)) {
-    emit({ type: "status", text: "Planner decided no tools are needed." });
-    return;
-  }
-
-  const steps = plan
-    .split(/\r?\n/)
-    .map((line) => line.match(/^\s*STEP:\s*([a-z_]+)\s*\|\s*(.+)$/i))
-    .filter((match): match is RegExpMatchArray => Boolean(match))
-    .slice(0, 3);
-
-  if (!steps.length) {
-    emit({ type: "status", text: "Planner produced no usable steps; answering directly." });
-    return;
-  }
-
-  for (const [, name, argument] of steps) {
-    const tool = findTool(name.toLowerCase());
-    if (!tool) continue;
-    emit({ type: "status", text: `Running ${tool.name}...` });
-    const result = await tool.run(argument.trim());
-    emitToolResult(emit, tool.name, argument.trim(), result.ok, result.content, result.data);
-    conversation.push({
-      role: "system",
-      content: `Result of ${tool.name}(${argument.trim()}):\n${result.content}`,
-    });
-  }
-  emit({ type: "status", text: "Verifying and writing the answer..." });
 }
 
 function emitToolResult(

@@ -7,6 +7,13 @@ import SettingsPanel from "./SettingsPanel";
 import Sidebar from "./Sidebar";
 import { GearIcon, MenuIcon } from "./Icons";
 import { sendChat } from "@/lib/client/chatClient";
+import { saveAutomaticMemory } from "@/lib/client/memoryClient";
+import {
+  deleteAllServerConversations,
+  deleteServerConversation,
+  loadServerConversations,
+  saveServerConversation,
+} from "@/lib/client/conversationClient";
 import { DEFAULT_SETTINGS, newId, storage, titleFrom } from "@/lib/client/storage";
 import type { Conversation, Mode, Project, ServerStatus, Settings, UiMessage } from "@/lib/client/types";
 import type { Capability, ChatMessage } from "@/lib/types";
@@ -29,17 +36,61 @@ export default function OmniAgentApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [serverPersistence, setServerPersistence] = useState(false);
+
   const abortRef = useRef<AbortController | undefined>(undefined);
+  const dirtyIdsRef = useRef(new Set<string>());
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
-    setConversations(storage.loadConversations());
+    let cancelled = false;
+
+    const localConversations = storage.loadConversations();
+
+    setConversations(localConversations);
     setProjects(storage.loadProjects());
     setSettings(storage.loadSettings());
     setLoaded(true);
+
+    void (async () => {
+      try {
+        const serverConversations = await loadServerConversations();
+        if (cancelled) return;
+
+        const serverIds = new Set(serverConversations.map((conversation) => conversation.id));
+        const localOnly = localConversations.filter(
+          (conversation) => !serverIds.has(conversation.id),
+        );
+
+        const merged = [...serverConversations, ...localOnly].sort(
+          (a, b) => {
+            const aTime = a.messages.at(-1)?.id ?? a.id;
+            const bTime = b.messages.at(-1)?.id ?? b.id;
+            return bTime.localeCompare(aTime);
+          },
+        );
+
+        setConversations(merged);
+        setServerPersistence(true);
+
+        for (const conversation of localOnly) {
+          dirtyIdsRef.current.add(conversation.id);
+        }
+      } catch {
+        if (!cancelled) {
+          setServerPersistence(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+
     fetch("/api/status")
       .then((response) => response.json())
       .then((data: ServerStatus) => {
@@ -51,6 +102,7 @@ export default function OmniAgentApp() {
         });
       })
       .catch(() => undefined);
+
     return () => {
       cancelled = true;
     };
@@ -60,6 +112,50 @@ export default function OmniAgentApp() {
     if (!loaded) return;
     if (settings.saveHistory) storage.saveConversations(conversations);
   }, [conversations, settings.saveHistory, loaded]);
+
+  useEffect(() => {
+    if (!loaded || !serverPersistence || !settings.saveHistory) return;
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    saveTimerRef.current = setTimeout(() => {
+      const ids = [...dirtyIdsRef.current];
+      dirtyIdsRef.current.clear();
+
+      if (!ids.length) return;
+
+      const currentById = new Map(
+        conversations.map((conversation) => [conversation.id, conversation]),
+      );
+
+      void Promise.all(
+        ids.map(async (id) => {
+          const conversation = currentById.get(id);
+          if (!conversation) return;
+
+          try {
+            const saved = await saveServerConversation(conversation);
+
+            setConversations((current) =>
+              current.map((candidate) =>
+                candidate.id === saved.id ? { ...candidate, ...saved } : candidate,
+              ),
+            );
+          } catch {
+            dirtyIdsRef.current.add(id);
+          }
+        }),
+      );
+    }, 700);
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
+  }, [conversations, loaded, serverPersistence, settings.saveHistory]);
 
   useEffect(() => {
     if (loaded) storage.saveSettings(settings);
@@ -75,14 +171,22 @@ export default function OmniAgentApp() {
     () => conversations.filter((conversation) => conversation.projectId === activeProjectId),
     [conversations, activeProjectId],
   );
+
   const active = conversations.find((conversation) => conversation.id === activeId);
   const messages = active?.messages ?? [];
   const noProvider = status !== undefined && status.models.length === 0;
 
-  const patchSettings = (patch: Partial<Settings>) => setSettings((current) => ({ ...current, ...patch }));
+  const patchSettings = (patch: Partial<Settings>) =>
+    setSettings((current) => ({ ...current, ...patch }));
+
+  const markDirty = useCallback((conversationId: string) => {
+    dirtyIdsRef.current.add(conversationId);
+  }, []);
 
   const updateMessages = useCallback(
     (conversationId: string, update: (messages: UiMessage[]) => UiMessage[]) => {
+      dirtyIdsRef.current.add(conversationId);
+
       setConversations((current) =>
         current.map((conversation) =>
           conversation.id === conversationId
@@ -98,18 +202,25 @@ export default function OmniAgentApp() {
     async (conversationId: string, history: UiMessage[]) => {
       const assistantId = newId();
       const project = projects.find((candidate) => candidate.id === activeProjectId);
-      const placeholder: UiMessage = { id: assistantId, role: "assistant", content: "" };
+      const placeholder: UiMessage = {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+      };
+
       updateMessages(conversationId, (current) => [...current, placeholder]);
 
       const patch = (mutate: (message: UiMessage) => UiMessage) =>
         updateMessages(conversationId, (current) =>
-          current.map((message) => (message.id === assistantId ? mutate(message) : message)),
+          current.map((message) =>
+            message.id === assistantId ? mutate(message) : message,
+          ),
         );
 
       const controller = new AbortController();
       abortRef.current = controller;
       setStreaming(true);
-
+      let assistantText = "";
       const payload: ChatMessage[] = history.map((message) => ({
         role: message.role,
         content: message.content,
@@ -140,36 +251,71 @@ export default function OmniAgentApp() {
                   },
                 }));
                 break;
+
               case "status":
-                patch((message) => ({ ...message, status: [...(message.status ?? []), event.text] }));
+                patch((message) => ({
+                  ...message,
+                  status: [...(message.status ?? []), event.text],
+                }));
                 break;
+
               case "delta":
-                patch((message) => ({ ...message, content: message.content + event.text }));
+                assistantText += event.text;
+                patch((message) => ({
+                  ...message,
+                  content: message.content + event.text,
+                }));
                 break;
+
               case "tool":
                 patch((message) => ({
                   ...message,
                   tools: [
                     ...(message.tools ?? []),
-                    { name: event.name, argument: event.argument, ok: event.ok, summary: event.summary },
+                    {
+                      name: event.name,
+                      argument: event.argument,
+                      ok: event.ok,
+                      summary: event.summary,
+                    },
                   ],
                 }));
                 break;
+
               case "sources":
-                patch((message) => ({ ...message, sources: [...(message.sources ?? []), ...event.sources] }));
+                patch((message) => ({
+                  ...message,
+                  sources: [...(message.sources ?? []), ...event.sources],
+                }));
                 break;
+
               case "image":
-                patch((message) => ({ ...message, images: [...(message.images ?? []), event.dataUrl] }));
+                patch((message) => ({
+                  ...message,
+                  images: [...(message.images ?? []), event.dataUrl],
+                }));
                 break;
+
               case "file":
                 patch((message) => ({
                   ...message,
-                  files: [...(message.files ?? []), { dataUrl: event.dataUrl, filename: event.filename }],
+                  files: [
+                    ...(message.files ?? []),
+                    {
+                      dataUrl: event.dataUrl,
+                      filename: event.filename,
+                    },
+                  ],
                 }));
                 break;
+
               case "error":
-                patch((message) => ({ ...message, error: event.message }));
+                patch((message) => ({
+                  ...message,
+                  error: event.message,
+                }));
                 break;
+
               case "done":
                 break;
             }
@@ -177,20 +323,38 @@ export default function OmniAgentApp() {
         });
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
-          patch((message) => ({ ...message, error: (error as Error).message }));
+          patch((message) => ({
+            ...message,
+            error: (error as Error).message,
+          }));
         }
       } finally {
         setStreaming(false);
         abortRef.current = undefined;
+        markDirty(conversationId);
+
+        if (assistantText.trim()) {
+          void saveAutomaticMemory(
+            conversationId,
+            [
+              ...payload,
+              {
+                role: "assistant",
+                content: assistantText,
+              },
+            ],
+          ).catch(() => undefined);
+        }
       }
     },
-    [activeProjectId, projects, settings, updateMessages],
+    [activeProjectId, projects, settings, updateMessages, markDirty],
   );
 
   const send = useCallback(
     async (text: string, image?: string) => {
       const content = text.trim();
       if ((!content && !image) || streaming) return;
+
       setInput("");
 
       const userMessage: UiMessage = {
@@ -199,11 +363,16 @@ export default function OmniAgentApp() {
         content: content || "What's in this image?",
         images: image ? [image] : undefined,
       };
+
       let conversationId = activeId;
       let history: UiMessage[] = [];
 
-      if (!conversationId || !conversations.some((conversation) => conversation.id === conversationId)) {
+      if (
+        !conversationId ||
+        !conversations.some((conversation) => conversation.id === conversationId)
+      ) {
         conversationId = newId();
+
         const conversation: Conversation = {
           id: conversationId,
           title: titleFrom(content),
@@ -211,17 +380,35 @@ export default function OmniAgentApp() {
           createdAt: Date.now(),
           messages: [userMessage],
         };
+
         history = [userMessage];
+
+        dirtyIdsRef.current.add(conversationId);
         setConversations((current) => [conversation, ...current]);
         setActiveId(conversationId);
       } else {
-        const existing = conversations.find((conversation) => conversation.id === conversationId);
+        const existing = conversations.find(
+          (conversation) => conversation.id === conversationId,
+        );
+
         history = [...(existing?.messages ?? []), userMessage];
-        updateMessages(conversationId, (current) => [...current, userMessage]);
+
+        updateMessages(conversationId, (current) => [
+          ...current,
+          userMessage,
+        ]);
+
         if (existing && existing.messages.length === 0) {
+          dirtyIdsRef.current.add(conversationId);
+
           setConversations((current) =>
             current.map((conversation) =>
-              conversation.id === conversationId ? { ...conversation, title: titleFrom(content) } : conversation,
+              conversation.id === conversationId
+                ? {
+                    ...conversation,
+                    title: titleFrom(content),
+                  }
+                : conversation,
             ),
           );
         }
@@ -229,14 +416,27 @@ export default function OmniAgentApp() {
 
       await run(conversationId, history);
     },
-    [activeId, activeProjectId, conversations, run, streaming, updateMessages],
+    [
+      activeId,
+      activeProjectId,
+      conversations,
+      run,
+      streaming,
+      updateMessages,
+    ],
   );
 
   const regenerate = useCallback(async () => {
     if (!active || streaming) return;
-    const lastUserIndex = [...active.messages].map((message) => message.role).lastIndexOf("user");
+
+    const lastUserIndex = [...active.messages]
+      .map((message) => message.role)
+      .lastIndexOf("user");
+
     if (lastUserIndex < 0) return;
+
     const history = active.messages.slice(0, lastUserIndex + 1);
+
     updateMessages(active.id, () => history);
     await run(active.id, history);
   }, [active, run, streaming, updateMessages]);
@@ -249,18 +449,33 @@ export default function OmniAgentApp() {
   };
 
   const deleteConversation = (id: string) => {
-    setConversations((current) => current.filter((conversation) => conversation.id !== id));
+    dirtyIdsRef.current.delete(id);
+
+    setConversations((current) =>
+      current.filter((conversation) => conversation.id !== id),
+    );
+
     if (activeId === id) setActiveId(undefined);
+
+    if (serverPersistence) {
+      void deleteServerConversation(id).catch(() => undefined);
+    }
   };
 
   const deleteAll = () => {
+    dirtyIdsRef.current.clear();
     setConversations([]);
     storage.clearConversations();
     setActiveId(undefined);
+
+    if (serverPersistence) {
+      void deleteAllServerConversations().catch(() => undefined);
+    }
   };
 
   const currentModelLabel =
-    status?.models.find((model) => model.id === settings.model)?.label ?? "no model configured";
+    status?.models.find((model) => model.id === settings.model)?.label ??
+    "no model configured";
 
   return (
     <div className="flex h-dvh overflow-hidden">
@@ -295,26 +510,35 @@ export default function OmniAgentApp() {
           >
             <MenuIcon />
           </button>
+
           <h1 className="text-sm font-semibold tracking-tight">OmniAgent</h1>
 
           <div className="ml-auto flex items-center gap-2">
             <select
               value={settings.model}
-              onChange={(event) => patchSettings({ model: event.target.value })}
-              disabled={!status || status.models.length === 0 || settings.autoRoute}
+              onChange={(event) =>
+                patchSettings({ model: event.target.value })
+              }
+              disabled={
+                !status ||
+                status.models.length === 0 ||
+                settings.autoRoute
+              }
               className="max-w-[220px] truncate rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1.5 text-xs outline-none focus:border-[var(--accent)] disabled:opacity-60"
               aria-label="Model"
             >
               {status?.models.length ? (
                 status.models.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.execution === "local" ? "\u{1F512}" : "\u2601"} {model.label}
+                    {model.execution === "local" ? "\u{1F512}" : "\u2601"}{" "}
+                    {model.label}
                   </option>
                 ))
               ) : (
                 <option value="">{currentModelLabel}</option>
               )}
             </select>
+
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
@@ -328,7 +552,8 @@ export default function OmniAgentApp() {
 
         {noProvider ? (
           <p className="border-b border-amber-900/50 bg-amber-950/30 px-4 py-2 text-xs text-amber-200">
-            No AI provider is configured. Copy <code>.env.example</code> to <code>.env.local</code>, add a key such as{" "}
+            No AI provider is configured. Copy <code>.env.example</code> to{" "}
+            <code>.env.local</code>, add a key such as{" "}
             <code>GROQ_API_KEY</code>, then restart the dev server.
           </p>
         ) : null}
@@ -342,10 +567,17 @@ export default function OmniAgentApp() {
                   ?
                 </span>
               </h2>
+
               <p className="text-sm text-[var(--muted)]">
-                Chat, research with sources, run tools, or plan with agent mode. Model:{" "}
-                <span className="text-[var(--foreground)]">{settings.autoRoute ? "automatic routing" : currentModelLabel}</span>
+                Chat, research with sources, run tools, or plan with agent
+                mode. Model:{" "}
+                <span className="text-[var(--foreground)]">
+                  {settings.autoRoute
+                    ? "automatic routing"
+                    : currentModelLabel}
+                </span>
               </p>
+
               <div className="grid w-full gap-2 sm:grid-cols-2">
                 {SUGGESTIONS.map((suggestion) => (
                   <button
@@ -360,7 +592,11 @@ export default function OmniAgentApp() {
               </div>
             </div>
           ) : (
-            <MessageList messages={messages} streaming={streaming} onRegenerate={regenerate} />
+            <MessageList
+              messages={messages}
+              streaming={streaming}
+              onRegenerate={regenerate}
+            />
           )}
         </div>
 
@@ -373,7 +609,9 @@ export default function OmniAgentApp() {
           mode={settings.mode}
           onModeChange={(mode) => patchSettings({ mode })}
           toolsEnabled={settings.toolsEnabled}
-          onToolsToggle={(toolsEnabled) => patchSettings({ toolsEnabled })}
+          onToolsToggle={(toolsEnabled) =>
+            patchSettings({ toolsEnabled })
+          }
           disabled={noProvider}
         />
       </main>
@@ -388,7 +626,11 @@ export default function OmniAgentApp() {
         activeProjectId={activeProjectId}
         onProjectContextChange={(context) =>
           setProjects((current) =>
-            current.map((project) => (project.id === activeProjectId ? { ...project, context } : project)),
+            current.map((project) =>
+              project.id === activeProjectId
+                ? { ...project, context }
+                : project,
+            ),
           )
         }
         onDeleteAllChats={deleteAll}
@@ -396,4 +638,3 @@ export default function OmniAgentApp() {
     </div>
   );
 }
-
