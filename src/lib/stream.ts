@@ -1,3 +1,10 @@
+import { availableModels, PROVIDERS } from "@/lib/providers";
+import {
+  rankFailoverCandidates,
+  streamWithFailover,
+  streamWithRetry,
+} from "@/lib/provider-resilience";
+import { classify } from "@/lib/router";
 import type { ChatMessage, ChatProvider, Source } from "@/lib/types";
 
 export type StreamEvent =
@@ -41,7 +48,7 @@ export function createEventStream(
   });
 }
 
-/** Collects a full completion, used by blend/agent planning where streaming is not needed. */
+/** Collects a full completion with the same resilience guarantees as streamed chat. */
 export async function collectText(
   provider: ChatProvider,
   model: string,
@@ -49,7 +56,71 @@ export async function collectText(
   signal?: AbortSignal,
 ): Promise<string> {
   let text = "";
-  for await (const chunk of provider.stream({ model, messages, signal })) text += chunk;
+
+  const allModels = availableModels();
+  const primaryModel = allModels.find(
+    (candidate) => candidate.id === model,
+  );
+
+  if (!primaryModel || primaryModel.provider !== provider.id) {
+    for await (
+      const chunk of streamWithRetry(
+        provider,
+        {
+          model,
+          messages,
+          signal,
+        },
+      )
+    ) {
+      text += chunk;
+    }
+
+    return text.trim();
+  }
+
+  const requiresVision = messages.some(
+    (message) => Boolean(message.images?.length),
+  );
+
+  const lastUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user");
+
+  const capability =
+    primaryModel.execution === "local"
+      ? "private"
+      : lastUserMessage?.content?.trim()
+        ? classify(lastUserMessage.content)
+        : undefined;
+
+  const primary = {
+    model: primaryModel,
+    provider,
+  };
+
+  const alternatives = rankFailoverCandidates(
+    primary,
+    allModels,
+    PROVIDERS,
+    capability,
+    requiresVision,
+    false,
+  );
+
+  for await (
+    const chunk of streamWithFailover(
+      primary,
+      {
+        model,
+        messages,
+        signal,
+      },
+      alternatives,
+    )
+  ) {
+    text += chunk.text;
+  }
+
   return text.trim();
 }
-
