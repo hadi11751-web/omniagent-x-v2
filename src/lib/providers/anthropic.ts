@@ -1,4 +1,4 @@
-import { parseSseDeltas, requestJson } from "@/lib/http";
+﻿import { parseSseDeltas, requestJson } from "@/lib/http";
 import type { ChatProvider, ChatRequest } from "@/lib/types";
 
 interface AnthropicEvent {
@@ -71,9 +71,10 @@ export const anthropicProvider: ChatProvider = {
       body.output_config = {
         effort: isOpus5 ? "max" : "high",
       };
-    } else {
-      body.temperature = request.temperature ?? 0.7;
     }
+
+    // Do not send `temperature` to current Claude models.
+    // Anthropic rejects it for models using the current generation controls.
 
     const response = await requestJson(
       "Anthropic",
