@@ -1,56 +1,85 @@
 import type { ToolDefinition } from "@/lib/types";
 
-/**
- * Pollinations.ai is a genuinely free, key-less image generation API:
- * https://image.pollinations.ai/prompt/<url-encoded prompt> returns the
- * image bytes directly over a plain GET, no auth headers, no account, no
- * billing page. This replaces the old Hugging Face implementation, which
- * required navigating Hugging Face's Inference Providers permissions and
- * billing requirements for what's meant to be a simple free feature.
- */
+const POLLINATIONS_API_KEY = () => process.env.POLLINATIONS_API_KEY?.trim();
+const POLLINATIONS_BASE_URL = "https://gen.pollinations.ai";
+
 export function imageGenerationAvailable(): boolean {
-  return true;
+  return Boolean(POLLINATIONS_API_KEY());
 }
 
-/** Returns a data URL so the browser can render the image without extra storage. */
 export async function generateImage(prompt: string): Promise<string> {
+  const key = POLLINATIONS_API_KEY();
+
+  if (!key) {
+    throw new Error("POLLINATIONS_API_KEY is not configured");
+  }
+
   const encoded = encodeURIComponent(prompt.trim());
-  const url = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true`;
+  const url = `${POLLINATIONS_BASE_URL}/image/${encoded}?model=flux`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
-  let response: Response;
+
   try {
-    response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        Accept: "image/*",
+      },
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        `Pollinations image request failed (${response.status})${detail ? `: ${detail.slice(0, 300)}` : ""}`,
+      );
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+
+    if (!contentType.startsWith("image/")) {
+      throw new Error(
+        `provider returned ${contentType || "unknown content type"} instead of an image`,
+      );
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!response.ok) {
-    throw new Error(`Pollinations image request failed (${response.status})`);
-  }
-  const contentType = response.headers.get("content-type") ?? "image/jpeg";
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (!contentType.startsWith("image/")) {
-    throw new Error(`provider returned ${contentType} instead of an image`);
-  }
-  return `data:${contentType};base64,${buffer.toString("base64")}`;
 }
 
 export const generateImageTool: ToolDefinition = {
   name: "generate_image",
-  description: "Generate an image from a text prompt. Only call this when the user asks for a picture.",
+  description:
+    "Generate an image from a text prompt. Only call this when the user asks for a picture.",
   argument: "the image prompt",
+
   async run(input) {
     try {
-      const dataUrl = await generateImage(input.trim());
+      const prompt = input.trim();
+      if (!prompt) {
+        return {
+          ok: false,
+          content: "generate_image error: image prompt is empty",
+        };
+      }
+
+      const dataUrl = await generateImage(prompt);
+
       return {
         ok: true,
-        content: `Generated an image for: ${input.trim()}. It is shown to the user.`,
+        content: `Generated an image for: ${prompt}. It is shown to the user.`,
         data: { image: dataUrl },
       };
     } catch (error) {
-      return { ok: false, content: `generate_image error: ${(error as Error).message}` };
+      return {
+        ok: false,
+        content: `generate_image error: ${(error as Error).message}`,
+      };
     }
   },
 };

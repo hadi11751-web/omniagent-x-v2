@@ -593,26 +593,45 @@ async function streamWithTools(
 
         buffer += chunk.text;
 
-        const trimmed = buffer.trimStart();
+        const cleaned = buffer
+          .replace(/<think>[\s\S]*?<\/think>/gi, "")
+          .trimStart();
 
-        if (trimmed.length < 5) continue;
+        const hasOpenThink =
+          /<think>/i.test(buffer) && !/<\/think>/i.test(buffer);
 
-        if (/^tool:/i.test(trimmed)) continue;
+        const looksLikeTool =
+          /^(?:TOOL\s*:|generate_image\b|generate\s+image\b)/i.test(
+            cleaned,
+          );
+
+        if (looksLikeTool) {
+          const parsed = parseToolCall(cleaned);
+
+          if (parsed) {
+            call = parsed;
+            buffer = cleaned;
+            break;
+          }
+
+          continue;
+        }
+
+        if (hasOpenThink) continue;
+        if (!cleaned) continue;
+        if (cleaned.length < 5) continue;
 
         held = false;
         emitted = true;
 
         emit({
           type: "delta",
-          text: buffer,
+          text: cleaned,
         });
 
         buffer = "";
       }
 
-      if (call) {
-        break;
-      }
     } catch (error) {
       if (signal.aborted) return;
 
