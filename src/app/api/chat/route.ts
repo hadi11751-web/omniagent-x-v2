@@ -135,7 +135,7 @@ export async function POST(request: Request) {
         emit({
           type: "meta",
           model: "direct-tool",
-          provider: "Pollinations",
+          provider: "Google Gemini",
           execution: "cloud",
           capability: "image",
           mode: body.mode ?? "chat",
@@ -191,7 +191,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "No AI provider is configured. Add GROQ_API_KEY (or GEMINI_API_KEY / OPENROUTER_API_KEY / HUGGINGFACE_API_KEY) to .env.local and restart the server.",
+          "No AI provider is configured. Add OPENAI_API_KEY (or GROQ_API_KEY / OPENROUTER_API_KEY / HUGGINGFACE_API_KEY) to .env.local and restart the server.",
       },
       { status: 503 },
     );

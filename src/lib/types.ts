@@ -1,6 +1,6 @@
 export type ProviderId =
+  | "openai"
   | "groq"
-  | "gemini"
   | "openrouter"
   | "huggingface"
   | "ollama"
@@ -71,4 +71,3 @@ export interface Source {
   url: string;
   snippet?: string;
 }
-

@@ -1,6 +1,6 @@
 import { anthropicProvider } from "./anthropic";
-import { geminiProvider } from "./gemini";
 import { huggingFaceProvider } from "./huggingface";
+import { openAiProvider } from "./openai";
 import { createOpenAiCompatibleProvider } from "./openaiCompatible";
 import { MODELS } from "@/lib/models";
 import type { ChatProvider, ModelInfo, ProviderId } from "@/lib/types";
@@ -37,8 +37,8 @@ const ollamaProvider = createOpenAiCompatibleProvider({
 });
 
 export const PROVIDERS: Record<ProviderId, ChatProvider> = {
+  openai: openAiProvider,
   groq: groqProvider,
-  gemini: geminiProvider,
   openrouter: openRouterProvider,
   huggingface: huggingFaceProvider,
   ollama: ollamaProvider,
@@ -61,4 +61,3 @@ export function providerFor(modelId: string): ChatProvider | undefined {
   const model = findModel(modelId);
   return model ? PROVIDERS[model.provider] : undefined;
 }
-

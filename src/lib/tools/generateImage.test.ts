@@ -1,37 +1,45 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateImage, generateImageTool } from "./generateImage";
 
-const originalKey = process.env.POLLINATIONS_API_KEY;
+const originalKey = process.env.GEMINI_API_KEY;
 
 afterEach(() => {
   vi.restoreAllMocks();
 
   if (originalKey === undefined) {
-    delete process.env.POLLINATIONS_API_KEY;
+    delete process.env.GEMINI_API_KEY;
   } else {
-    process.env.POLLINATIONS_API_KEY = originalKey;
+    process.env.GEMINI_API_KEY = originalKey;
   }
 });
 
 describe("generateImage", () => {
-  it("fails clearly when POLLINATIONS_API_KEY is missing", async () => {
-    delete process.env.POLLINATIONS_API_KEY;
+  it("fails clearly when GEMINI_API_KEY is missing", async () => {
+    delete process.env.GEMINI_API_KEY;
 
     await expect(
       generateImage("a realistic Bugatti"),
-    ).rejects.toThrow("POLLINATIONS_API_KEY is not configured");
+    ).rejects.toThrow("GEMINI_API_KEY is not configured");
   });
 
-  it("requests an image from Pollinations and returns a data URL", async () => {
-    process.env.POLLINATIONS_API_KEY = "test-key";
+  it("requests an image from Gemini and returns a data URL", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
 
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(new Uint8Array([1, 2, 3]), {
-        status: 200,
-        headers: {
-          "content-type": "image/png",
+      new Response(
+        JSON.stringify({
+          output_image: {
+            data: "AQID",
+            mime_type: "image/png",
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
         },
-      }),
+      ),
     );
 
     vi.stubGlobal("fetch", fetchMock);
@@ -43,11 +51,47 @@ describe("generateImage", () => {
 
     const [url, options] = fetchMock.mock.calls[0];
 
-    expect(String(url)).toContain(
-      "https://gen.pollinations.ai/image/a%20realistic%20Bugatti?model=flux",
+    expect(String(url)).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/interactions",
     );
-    expect(options.headers.Authorization).toBe("Bearer test-key");
-    expect(options.headers.Accept).toBe("image/*");
+    expect(options.method).toBe("POST");
+    expect(options.headers["x-goog-api-key"]).toBe("test-key");
+
+    const body = JSON.parse(options.body);
+
+    expect(body.model).toBe("gemini-3.1-flash-image");
+    expect(body.input).toBe("a realistic Bugatti");
+    expect(body.response_format.type).toBe("image");
+    expect(body.response_format.image_size).toBe("1K");
+  });
+
+  it("handles Gemini authentication errors", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "API key not valid",
+            },
+          }),
+          {
+            status: 403,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
+      ),
+    );
+
+    await expect(
+      generateImage("a realistic Bugatti"),
+    ).rejects.toThrow(
+      "Gemini image generation authentication failed (403)",
+    );
   });
 
   it("returns a failed tool result for an empty prompt", async () => {

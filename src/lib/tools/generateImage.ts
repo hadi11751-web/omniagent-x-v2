@@ -1,71 +1,105 @@
-import type { ToolDefinition } from "@/lib/types";
+﻿import type { ToolDefinition } from "@/lib/types";
 
-const POLLINATIONS_API_KEY = () => process.env.POLLINATIONS_API_KEY?.trim();
-const POLLINATIONS_BASE_URL = "https://gen.pollinations.ai";
+const GEMINI_API_KEY = () => process.env.GEMINI_API_KEY?.trim();
+const GEMINI_MODEL = "gemini-3.1-flash-image";
+const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
 export function imageGenerationAvailable(): boolean {
-  return Boolean(POLLINATIONS_API_KEY());
+  return Boolean(GEMINI_API_KEY());
 }
 
 export async function generateImage(prompt: string): Promise<string> {
-  const key = POLLINATIONS_API_KEY();
+  const key = GEMINI_API_KEY();
 
   if (!key) {
-    throw new Error("POLLINATIONS_API_KEY is not configured");
+    throw new Error("GEMINI_API_KEY is not configured");
   }
-
-  const encoded = encodeURIComponent(prompt.trim());
-  const url = `${POLLINATIONS_BASE_URL}/image/${encoded}?model=flux`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(GEMINI_URL, {
+      method: "POST",
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${key}`,
-        Accept: "image/*",
+        "x-goog-api-key": key,
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
+      body: JSON.stringify({
+        model: GEMINI_MODEL,
+        input: prompt.trim(),
+        response_format: {
+          type: "image",
+          aspect_ratio: "1:1",
+          image_size: "1K",
+        },
+      }),
     });
 
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
+    const raw = await response.text();
 
-      if (response.status === 402) {
-        throw new Error(
-          "Pollinations image generation is unavailable because the configured API key has no remaining Pollen budget.",
-        );
+    if (!response.ok) {
+      let detail = raw.slice(0, 300);
+
+      try {
+        const parsed = JSON.parse(raw) as {
+          error?: {
+            message?: string;
+          };
+        };
+
+        detail = parsed.error?.message ?? detail;
+      } catch {
+        // Keep the raw response excerpt.
       }
 
       if (response.status === 401 || response.status === 403) {
         throw new Error(
-          `Pollinations image generation authentication failed (${response.status}). Check POLLINATIONS_API_KEY in Vercel.`,
+          `Gemini image generation authentication failed (${response.status}). Check GEMINI_API_KEY in Vercel.`,
         );
       }
 
       if (response.status === 429) {
         throw new Error(
-          "Pollinations image generation is temporarily rate-limited. Please try again shortly.",
+          "Gemini image generation is temporarily rate-limited. Please try again shortly.",
+        );
+      }
+
+      if (response.status >= 500) {
+        throw new Error(
+          `Gemini image generation is temporarily unavailable (${response.status}). Please try again shortly.`,
         );
       }
 
       throw new Error(
-        `Pollinations image request failed (${response.status})${detail ? `: ${detail.slice(0, 300)}` : ""}`,
+        `Gemini image request failed (${response.status}): ${detail}`,
       );
     }
 
-    const contentType = response.headers.get("content-type") ?? "";
+    let data: {
+      output_image?: {
+        data?: string;
+        mime_type?: string;
+      };
+    };
 
-    if (!contentType.startsWith("image/")) {
-      throw new Error(
-        `provider returned ${contentType || "unknown content type"} instead of an image`,
-      );
+    try {
+      data = JSON.parse(raw) as typeof data;
+    } catch {
+      throw new Error("Gemini returned an invalid JSON response");
     }
 
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const image = data.output_image;
 
-    return `data:${contentType};base64,${buffer.toString("base64")}`;
+    if (!image?.data) {
+      throw new Error("Gemini returned no generated image");
+    }
+
+    const mimeType = image.mime_type || "image/png";
+
+    return `data:${mimeType};base64,${image.data}`;
   } finally {
     clearTimeout(timeout);
   }
@@ -80,6 +114,7 @@ export const generateImageTool: ToolDefinition = {
   async run(input) {
     try {
       const prompt = input.trim();
+
       if (!prompt) {
         return {
           ok: false,

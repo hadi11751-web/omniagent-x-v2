@@ -129,8 +129,8 @@ describe("provider resilience", () => {
     };
 
     const normal = model(
-      "gemini-3.6-flash",
-      "gemini",
+      "gpt-6-astra",
+      "openai",
       ["fast", "research", "reasoning"],
     );
 
@@ -146,7 +146,7 @@ describe("provider resilience", () => {
       [primary.model, normal, vision],
       {
         groq: primary.provider,
-        gemini: provider("gemini"),
+        openai: provider("openai"),
         openrouter: provider("openrouter"),
       },
       "reasoning",
@@ -389,9 +389,9 @@ describe("provider resilience", () => {
       ["reasoning"],
     );
 
-    const geminiModel = model(
-      "gemini-fallback",
-      "gemini",
+    const openAiModel = model(
+      "openai-fallback",
+      "openai",
       ["reasoning"],
     );
 
@@ -407,17 +407,17 @@ describe("provider resilience", () => {
 
     const alternatives = rankFailoverCandidates(
       primary,
-      [primary.model, groqModel, geminiModel],
+      [primary.model, groqModel, openAiModel],
       {
         anthropic: primary.provider,
         groq: provider("groq"),
-        gemini: provider("gemini"),
+        openai: provider("openai"),
       },
       "reasoning",
     );
 
     expect(alternatives.map((item) => item.model.id)).toEqual([
-      "gemini-fallback",
+      "openai-fallback",
     ]);
   });
 });

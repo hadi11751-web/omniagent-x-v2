@@ -4,10 +4,18 @@ import type { ModelInfo } from "@/lib/types";
  * Curated model catalogue.
  * A model only appears when its provider has server-side credentials.
  *
- * Claude Opus 5 is intentionally first because OmniAgent's default model
+ * GPT-6 Astra is intentionally first because OmniAgent's default model
  * selection uses the first configured model.
  */
 export const MODELS: ModelInfo[] = [
+  {
+    id: "gpt-6-astra",
+    label: "GPT-6 Astra (OpenAI)",
+    provider: "openai",
+    execution: "cloud",
+    capabilities: ["reasoning", "coding", "research", "fast"],
+    vision: true,
+  },
   {
     id: "claude-opus-5",
     label: "Claude Opus 5 (Anthropic)",
@@ -57,13 +65,6 @@ export const MODELS: ModelInfo[] = [
     execution: "cloud",
     capabilities: ["coding", "reasoning"],
     vision: true,
-  },
-  {
-    id: "gemini-3.6-flash",
-    label: "Gemini 3.6 Flash",
-    provider: "gemini",
-    execution: "cloud",
-    capabilities: ["fast", "research", "reasoning"],
   },
   {
     id: "openrouter/free",
