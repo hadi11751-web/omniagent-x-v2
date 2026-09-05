@@ -31,6 +31,25 @@ export async function generateImage(prompt: string): Promise<string> {
 
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
+
+      if (response.status === 402) {
+        throw new Error(
+          "Pollinations image generation is unavailable because the configured API key has no remaining Pollen budget.",
+        );
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(
+          `Pollinations image generation authentication failed (${response.status}). Check POLLINATIONS_API_KEY in Vercel.`,
+        );
+      }
+
+      if (response.status === 429) {
+        throw new Error(
+          "Pollinations image generation is temporarily rate-limited. Please try again shortly.",
+        );
+      }
+
       throw new Error(
         `Pollinations image request failed (${response.status})${detail ? `: ${detail.slice(0, 300)}` : ""}`,
       );
