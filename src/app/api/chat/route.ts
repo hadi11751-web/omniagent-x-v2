@@ -19,11 +19,12 @@ import {
   toolInstructions,
 } from "@/lib/tools";
 import { searchWeb } from "@/lib/tools/webSearch";
+import { isDirectImageRequest, extractImagePrompt } from "@/lib/imageRequest";
 import type { ChatMessage, ChatProvider, ModelInfo, Source } from "@/lib/types";
 import { auth } from "@clerk/nextjs/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 type Mode = "chat" | "research" | "blend" | "agent";
 
@@ -86,6 +87,102 @@ export async function POST(request: Request) {
       },
       { status: 429 },
     );
+  }
+
+  const directUserMessage = [...history]
+    .reverse()
+    .find((message) => message.role === "user");
+
+  const directUserText = directUserMessage?.content ?? "";
+
+  /*
+   * Direct image requests have their own provider and must not depend on
+   * Gemini, Groq, Hugging Face, or another chat provider being available.
+   */
+  if (
+    body.mode !== "blend" &&
+    body.mode !== "agent" &&
+    body.toolsEnabled !== false &&
+    isDirectImageRequest(directUserText)
+  ) {
+    const imageTool = findTool("generate_image");
+
+    if (!imageTool) {
+      return Response.json(
+        {
+          error:
+            "Image generation is currently unavailable. The image provider is not configured.",
+        },
+        { status: 503 },
+      );
+    }
+
+    const concurrency = await acquireConcurrency(userId);
+
+    if (!concurrency.acquired) {
+      return Response.json(
+        {
+          error:
+            "Too many requests are already running for this account. Please wait for one to finish before starting another.",
+          concurrencyLimit: concurrency.limit,
+        },
+        { status: 429 },
+      );
+    }
+
+    return createEventStream(async (emit) => {
+      try {
+        emit({
+          type: "meta",
+          model: "direct-tool",
+          provider: "Pollinations",
+          execution: "cloud",
+          capability: "image",
+          mode: body.mode ?? "chat",
+        });
+
+        emit({
+          type: "status",
+          text: "Generating image...",
+        });
+
+        const prompt = extractImagePrompt(directUserText);
+
+        if (!prompt) {
+          emit({
+            type: "error",
+            message: "Image prompt is empty.",
+          });
+          return;
+        }
+
+        const result = await imageTool.run(prompt);
+
+        emitToolResult(
+          emit,
+          imageTool.name,
+          prompt,
+          result.ok,
+          result.content,
+          result.data,
+        );
+
+        if (!result.ok) {
+          emit({
+            type: "error",
+            message: result.content,
+          });
+          return;
+        }
+
+        emit({
+          type: "status",
+          text: "Image generated successfully.",
+        });
+      } finally {
+        await concurrency.release();
+      }
+    });
   }
 
   const models = availableModels();
