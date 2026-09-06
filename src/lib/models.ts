@@ -9,8 +9,8 @@ import type { ModelInfo } from "@/lib/types";
  */
 export const MODELS: ModelInfo[] = [
   {
-    id: "gpt-6-astra",
-    label: "GPT-6 Astra (OpenAI)",
+    id: "gpt-5.6-sol",
+    label: "GPT-5.6 Sol (OpenAI)",
     provider: "openai",
     execution: "cloud",
     capabilities: ["reasoning", "coding", "research", "fast"],

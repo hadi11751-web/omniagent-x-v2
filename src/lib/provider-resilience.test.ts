@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   getProviderHealth,
   isProviderHealthy,
@@ -129,7 +129,7 @@ describe("provider resilience", () => {
     };
 
     const normal = model(
-      "gpt-6-astra",
+      "gpt-5.6-sol",
       "openai",
       ["fast", "research", "reasoning"],
     );
@@ -421,3 +421,4 @@ describe("provider resilience", () => {
     ]);
   });
 });
+
