@@ -15,81 +15,91 @@ interface OpenAiResponseEvent {
   };
 }
 
-function toInputMessage(message: ChatMessage) {
-  const content: Array<Record<string, unknown>> = [
-    {
-      type: "input_text",
-      text: message.content,
-    },
-  ];
+function buildInput(messages: ChatMessage[]): string {
+  return messages
+    .map((message) => {
+      const role =
+        message.role === "system"
+          ? "System"
+          : message.role === "assistant"
+            ? "Assistant"
+            : "User";
 
-  if (message.images?.length) {
-    for (const url of message.images) {
-      content.push({
-        type: "input_image",
-        image_url: url,
-      });
-    }
-  }
+      const images =
+        message.images?.length
+          ? `\n[Attached images: ${message.images.length}]`
+          : "";
 
-  return {
-    role: message.role === "assistant" ? "assistant" : "user",
-    content,
-  };
+      return `${role}:\n${message.content}${images}`;
+    })
+    .join("\n\n");
 }
 
 async function* parseOpenAiResponsesStream(
   response: Response,
 ): AsyncGenerator<string> {
   const body = response.body;
-  if (!body) return;
+
+  if (!body) {
+    return;
+  }
 
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
 
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-
-      if (!trimmed.startsWith("data:")) continue;
-
-      const data = trimmed.slice(5).trim();
-
-      if (!data || data === "[DONE]") continue;
-
-      let payload: OpenAiResponseEvent;
-
-      try {
-        payload = JSON.parse(data) as OpenAiResponseEvent;
-      } catch {
-        continue;
+      if (done) {
+        break;
       }
 
-      if (payload.type === "error") {
-        throw new StreamAbortedError(
-          "OpenAI",
-          payload.error?.message ?? "OpenAI stream failed",
-          payload.error?.code,
-        );
-      }
+      buffer += decoder.decode(value, { stream: true });
 
-      if (
-        payload.type === "response.output_text.delta" &&
-        typeof payload.delta === "string"
-      ) {
-        yield payload.delta;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (!trimmed.startsWith("data:")) {
+          continue;
+        }
+
+        const data = trimmed.slice(5).trim();
+
+        if (!data || data === "[DONE]") {
+          continue;
+        }
+
+        let payload: OpenAiResponseEvent;
+
+        try {
+          payload = JSON.parse(data) as OpenAiResponseEvent;
+        } catch {
+          continue;
+        }
+
+        if (payload.type === "error") {
+          throw new StreamAbortedError(
+            "OpenAI",
+            payload.error?.message ?? "OpenAI stream failed",
+            payload.error?.code,
+          );
+        }
+
+        if (
+          payload.type === "response.output_text.delta" &&
+          typeof payload.delta === "string"
+        ) {
+          yield payload.delta;
+        }
       }
     }
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -109,14 +119,7 @@ export const openAiProvider = {
       throw new Error("OPENAI_API_KEY is not configured");
     }
 
-    const systemMessages = request.messages
-      .filter((message) => message.role === "system")
-      .map((message) => message.content.trim())
-      .filter(Boolean);
-
-    const inputMessages = request.messages
-      .filter((message) => message.role !== "system")
-      .map(toInputMessage);
+    const input = buildInput(request.messages);
 
     const response = await requestJson(
       "OpenAI",
@@ -129,10 +132,7 @@ export const openAiProvider = {
         },
         body: JSON.stringify({
           model: request.model,
-          ...(systemMessages.length
-            ? { instructions: systemMessages.join("\n\n") }
-            : {}),
-          input: inputMessages,
+          input,
           stream: true,
         }),
         signal: request.signal,
