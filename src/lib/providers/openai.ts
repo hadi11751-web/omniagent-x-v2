@@ -33,7 +33,7 @@ function toInputMessage(message: ChatMessage) {
   }
 
   return {
-    role: message.role,
+    role: message.role === "assistant" ? "assistant" : "user",
     content,
   };
 }
@@ -50,6 +50,7 @@ async function* parseOpenAiResponsesStream(
 
   while (true) {
     const { done, value } = await reader.read();
+
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
@@ -108,6 +109,15 @@ export const openAiProvider = {
       throw new Error("OPENAI_API_KEY is not configured");
     }
 
+    const systemMessages = request.messages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content.trim())
+      .filter(Boolean);
+
+    const inputMessages = request.messages
+      .filter((message) => message.role !== "system")
+      .map(toInputMessage);
+
     const response = await requestJson(
       "OpenAI",
       "https://api.openai.com/v1/responses",
@@ -119,7 +129,10 @@ export const openAiProvider = {
         },
         body: JSON.stringify({
           model: request.model,
-          input: request.messages.map(toInputMessage),
+          ...(systemMessages.length
+            ? { instructions: systemMessages.join("\n\n") }
+            : {}),
+          input: inputMessages,
           stream: true,
         }),
         signal: request.signal,
