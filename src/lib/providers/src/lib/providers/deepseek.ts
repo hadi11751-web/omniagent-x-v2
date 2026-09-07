@@ -1,13 +1,28 @@
-```ts
 import { parseSseDeltas, requestJson } from "@/lib/http";
-import type { ChatProvider, ChatRequest } from "@/lib/types";
+import type {
+  ChatMessage,
+  ChatProvider,
+  ChatRequest,
+} from "@/lib/types";
 
 interface DeepSeekChunk {
   choices?: Array<{
     delta?: {
       content?: string | null;
+      reasoning_content?: string | null;
     };
   }>;
+  error?: {
+    message?: string;
+    code?: string;
+  };
+}
+
+function toWireMessage(message: ChatMessage) {
+  return {
+    role: message.role,
+    content: message.content,
+  };
 }
 
 function pickDelta(payload: unknown): string | undefined {
@@ -17,7 +32,22 @@ function pickDelta(payload: unknown): string | undefined {
 
   const chunk = payload as DeepSeekChunk;
 
-  return chunk.choices?.[0]?.delta?.content ?? undefined;
+  if (chunk.error) {
+    throw new Error(
+      chunk.error.message ??
+        "DeepSeek streaming request failed",
+    );
+  }
+
+  /*
+   * DeepSeek emits reasoning_content separately.
+   * OmniAgent's current ChatProvider contract exposes
+   * only assistant text, so only final content is emitted.
+   */
+  return (
+    chunk.choices?.[0]?.delta?.content ??
+    undefined
+  );
 }
 
 export const deepseekProvider: ChatProvider = {
@@ -25,23 +55,21 @@ export const deepseekProvider: ChatProvider = {
   label: "DeepSeek",
   execution: "cloud",
 
-  isConfigured: () => Boolean(process.env.DEEPSEEK_API_KEY),
+  isConfigured: () =>
+    Boolean(process.env.DEEPSEEK_API_KEY),
 
   async *stream(request: ChatRequest) {
     const key = process.env.DEEPSEEK_API_KEY;
 
     if (!key) {
-      throw new Error("DEEPSEEK_API_KEY is not configured");
+      throw new Error(
+        "DEEPSEEK_API_KEY is not configured",
+      );
     }
 
-    const messages = request.messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-    }));
-
-    if (!messages.length) {
-      throw new Error("DeepSeek request contains no messages");
-    }
+    const messages = request.messages.map(
+      toWireMessage,
+    );
 
     const body: Record<string, unknown> = {
       model: request.model,
@@ -49,11 +77,9 @@ export const deepseekProvider: ChatProvider = {
       stream: true,
     };
 
-    /*
-     * DeepSeek V4 Pro supports explicit thinking mode and reasoning effort.
-     * These parameters are part of the current DeepSeek Chat Completions API.
-     */
-    if (request.model === "deepseek-v4-pro") {
+    if (
+      request.model === "deepseek-v4-pro"
+    ) {
       body.thinking = {
         type: "enabled",
       };
@@ -72,10 +98,14 @@ export const deepseekProvider: ChatProvider = {
         },
         body: JSON.stringify(body),
         signal: request.signal,
+        timeoutMs: 120_000,
       },
     );
 
-    yield* parseSseDeltas(response, pickDelta, "DeepSeek");
+    yield* parseSseDeltas(
+      response,
+      pickDelta,
+      "DeepSeek",
+    );
   },
 };
-```
