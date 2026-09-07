@@ -1,4 +1,3 @@
-```ts
 import { parseSseDeltas, requestJson } from "@/lib/http";
 import type { ChatProvider, ChatMessage, ChatRequest } from "@/lib/types";
 
@@ -54,26 +53,25 @@ export const perplexityProvider: ChatProvider = {
     const messages = request.messages.map(toWireMessage);
 
     if (!messages.length) {
-      throw new Error(
-        "Perplexity request contains no messages",
-      );
+      throw new Error("Perplexity request contains no messages");
     }
 
     const isDeepResearch =
       request.model === "sonar-deep-research";
 
-    const isReasoning =
-      request.model === "sonar-reasoning-pro";
-
     const body: Record<string, unknown> = {
       model: request.model,
       messages,
       stream: true,
-      max_tokens: isDeepResearch ? 32768 : 16384,
     };
 
-    if (isDeepResearch || isReasoning) {
+    if (isDeepResearch) {
       body.reasoning_effort = "high";
+      body.max_tokens = 32768;
+    }
+
+    if (request.model === "sonar-reasoning-pro") {
+      body.max_tokens = 16384;
     }
 
     const response = await requestJson(
@@ -87,11 +85,6 @@ export const perplexityProvider: ChatProvider = {
         },
         body: JSON.stringify(body),
         signal: request.signal,
-
-        /*
-         * Deep Research may take substantially longer than an ordinary
-         * chat-completion request.
-         */
         timeoutMs: isDeepResearch ? 120_000 : 60_000,
       },
     );
@@ -103,4 +96,3 @@ export const perplexityProvider: ChatProvider = {
     );
   },
 };
-```
