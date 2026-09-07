@@ -1,6 +1,9 @@
-```ts
 import { parseSseDeltas, requestJson } from "@/lib/http";
-import type { ChatMessage, ChatProvider, ChatRequest } from "@/lib/types";
+import type {
+  ChatMessage,
+  ChatProvider,
+  ChatRequest,
+} from "@/lib/types";
 
 interface XaiChunk {
   choices?: Array<{
@@ -14,6 +17,34 @@ interface XaiChunk {
   };
 }
 
+function toWireMessage(message: ChatMessage) {
+  if (
+    message.role === "user" &&
+    message.images?.length
+  ) {
+    return {
+      role: message.role,
+      content: [
+        {
+          type: "text",
+          text: message.content,
+        },
+        ...message.images.map((image) => ({
+          type: "image_url",
+          image_url: {
+            url: image,
+          },
+        })),
+      ],
+    };
+  }
+
+  return {
+    role: message.role,
+    content: message.content,
+  };
+}
+
 function pickDelta(payload: unknown): string | undefined {
   if (!payload || typeof payload !== "object") {
     return undefined;
@@ -23,40 +54,15 @@ function pickDelta(payload: unknown): string | undefined {
 
   if (chunk.error) {
     throw new Error(
-      chunk.error.message ?? "xAI streaming request failed",
+      chunk.error.message ??
+        "xAI streaming request failed",
     );
   }
 
-  return chunk.choices?.[0]?.delta?.content ?? undefined;
-}
-
-function toWireMessage(message: ChatMessage) {
-  if (!message.images?.length) {
-    return {
-      role: message.role,
-      content: message.content,
-    };
-  }
-
-  return {
-    role: message.role,
-    content: [
-      ...(message.content
-        ? [
-            {
-              type: "text",
-              text: message.content,
-            },
-          ]
-        : []),
-      ...message.images.map((imageUrl) => ({
-        type: "image_url",
-        image_url: {
-          url: imageUrl,
-        },
-      })),
-    ],
-  };
+  return (
+    chunk.choices?.[0]?.delta?.content ??
+    undefined
+  );
 }
 
 export const xaiProvider: ChatProvider = {
@@ -64,36 +70,28 @@ export const xaiProvider: ChatProvider = {
   label: "xAI",
   execution: "cloud",
 
-  isConfigured: () => Boolean(process.env.XAI_API_KEY),
+  isConfigured: () =>
+    Boolean(process.env.XAI_API_KEY),
 
   async *stream(request: ChatRequest) {
     const key = process.env.XAI_API_KEY;
 
     if (!key) {
-      throw new Error("XAI_API_KEY is not configured");
+      throw new Error(
+        "XAI_API_KEY is not configured",
+      );
     }
 
-    const messages = request.messages.map(toWireMessage);
-
-    if (!messages.length) {
-      throw new Error("xAI request contains no messages");
-    }
+    const messages = request.messages.map(
+      toWireMessage,
+    );
 
     const body: Record<string, unknown> = {
       model: request.model,
       messages,
       stream: true,
+      reasoning_effort: "high",
     };
-
-    /*
-     * Grok 4.6 supports reasoning effort.
-     *
-     * `high` is appropriate for OmniAgent's frontier reasoning role.
-     * We intentionally do not send legacy sampling parameters here.
-     */
-    if (request.model === "grok-4.6") {
-      body.reasoning_effort = "high";
-    }
 
     const response = await requestJson(
       "xAI",
@@ -106,14 +104,14 @@ export const xaiProvider: ChatProvider = {
         },
         body: JSON.stringify(body),
         signal: request.signal,
-        /*
-         * Reasoning streams can take longer than the generic 60s timeout.
-         */
         timeoutMs: 120_000,
       },
     );
 
-    yield* parseSseDeltas(response, pickDelta, "xAI");
+    yield* parseSseDeltas(
+      response,
+      pickDelta,
+      "xAI",
+    );
   },
 };
-```
