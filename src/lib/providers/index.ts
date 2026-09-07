@@ -1,5 +1,6 @@
 ```ts
 import { anthropicProvider } from "./anthropic";
+import { deepseekProvider } from "./deepseek";
 import { geminiProvider } from "./gemini";
 import { huggingFaceProvider } from "./huggingface";
 import { openaiProvider } from "./openai";
@@ -46,18 +47,17 @@ const ollamaProvider: ChatProvider = createOpenAiCompatibleProvider({
 });
 
 /**
- * The registry is intentionally partial.
+ * Only providers with real implementations belong in this registry.
  *
- * A ProviderId alone does not mean a provider is implemented.
- * A model is available only when:
- *
- * 1. Its provider is registered.
- * 2. The provider reports itself as configured.
+ * ProviderId is intentionally broader than this object because new providers
+ * are added incrementally and must never appear usable before their
+ * implementation exists.
  */
 export const PROVIDERS: Partial<Record<ProviderId, ChatProvider>> = {
   openai: openaiProvider,
   anthropic: anthropicProvider,
   gemini: geminiProvider,
+  deepseek: deepseekProvider,
   groq: groqProvider,
   openrouter: openRouterProvider,
   huggingface: huggingFaceProvider,
@@ -74,6 +74,7 @@ export function configuredProviders(): ChatProvider[] {
 export function availableModels(): ModelInfo[] {
   return MODELS.filter((model) => {
     const provider = PROVIDERS[model.provider];
+
     return Boolean(provider?.isConfigured());
   });
 }
