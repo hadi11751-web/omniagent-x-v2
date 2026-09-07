@@ -40,11 +40,40 @@ export function toolInstructions(tools: ToolDefinition[]): string {
 }
 
 const CALL_PATTERN = /^\s*TOOL:\s*([a-z_]+)\s*\|\s*([\s\S]+)$/i;
+const SIMPLE_IMAGE_PATTERN = /^\s*(?:generate_image|generate\s+image)\s*(?:of|:|-)?\s*(.+)$/i;
 
 export function parseToolCall(text: string): { name: string; argument: string } | undefined {
-  const match = text.trim().match(CALL_PATTERN);
-  if (!match) return undefined;
-  return { name: match[1].toLowerCase(), argument: match[2].trim() };
+  const raw = text.trim();
+
+  const direct = raw.match(CALL_PATTERN);
+  if (direct) {
+    return {
+      name: direct[1].toLowerCase(),
+      argument: direct[2].trim(),
+    };
+  }
+
+  const withoutThink = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .trim();
+
+  const cleaned = withoutThink.match(CALL_PATTERN);
+  if (cleaned) {
+    return {
+      name: cleaned[1].toLowerCase(),
+      argument: cleaned[2].trim(),
+    };
+  }
+
+  const image = withoutThink.match(SIMPLE_IMAGE_PATTERN);
+  if (image) {
+    return {
+      name: "generate_image",
+      argument: image[1].trim(),
+    };
+  }
+
+  return undefined;
 }
 
 const ARGUMENT_KEYS = ["query", "expression", "url", "text", "prompt", "input"];

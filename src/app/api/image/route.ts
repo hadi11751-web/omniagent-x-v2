@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { generateImage, imageGenerationAvailable } from "@/lib/tools/generateImage";
 
 export const runtime = "nodejs";
@@ -7,7 +7,7 @@ export const maxDuration = 120;
 export async function POST(request: Request) {
   if (!imageGenerationAvailable()) {
     return NextResponse.json(
-      { error: "Image generation needs HUGGINGFACE_API_KEY in .env.local." },
+      { error: "Image generation needs GEMINI_API_KEY configured on the server." },
       { status: 503 },
     );
   }

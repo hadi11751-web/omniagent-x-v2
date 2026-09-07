@@ -19,11 +19,12 @@ import {
   toolInstructions,
 } from "@/lib/tools";
 import { searchWeb } from "@/lib/tools/webSearch";
+import { isDirectImageRequest, extractImagePrompt } from "@/lib/imageRequest";
 import type { ChatMessage, ChatProvider, ModelInfo, Source } from "@/lib/types";
 import { auth } from "@clerk/nextjs/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 type Mode = "chat" | "research" | "blend" | "agent";
 
@@ -88,13 +89,109 @@ export async function POST(request: Request) {
     );
   }
 
+  const directUserMessage = [...history]
+    .reverse()
+    .find((message) => message.role === "user");
+
+  const directUserText = directUserMessage?.content ?? "";
+
+  /*
+   * Direct image requests have their own provider and must not depend on
+   * Gemini, Groq, Hugging Face, or another chat provider being available.
+   */
+  if (
+    body.mode !== "blend" &&
+    body.mode !== "agent" &&
+    body.toolsEnabled !== false &&
+    isDirectImageRequest(directUserText)
+  ) {
+    const imageTool = findTool("generate_image");
+
+    if (!imageTool) {
+      return Response.json(
+        {
+          error:
+            "Image generation is currently unavailable. The image provider is not configured.",
+        },
+        { status: 503 },
+      );
+    }
+
+    const concurrency = await acquireConcurrency(userId);
+
+    if (!concurrency.acquired) {
+      return Response.json(
+        {
+          error:
+            "Too many requests are already running for this account. Please wait for one to finish before starting another.",
+          concurrencyLimit: concurrency.limit,
+        },
+        { status: 429 },
+      );
+    }
+
+    return createEventStream(async (emit) => {
+      try {
+        emit({
+          type: "meta",
+          model: "direct-tool",
+          provider: "Google Gemini",
+          execution: "cloud",
+          capability: "image",
+          mode: body.mode ?? "chat",
+        });
+
+        emit({
+          type: "status",
+          text: "Generating image...",
+        });
+
+        const prompt = extractImagePrompt(directUserText);
+
+        if (!prompt) {
+          emit({
+            type: "error",
+            message: "Image prompt is empty.",
+          });
+          return;
+        }
+
+        const result = await imageTool.run(prompt);
+
+        emitToolResult(
+          emit,
+          imageTool.name,
+          prompt,
+          result.ok,
+          result.content,
+          result.data,
+        );
+
+        if (!result.ok) {
+          emit({
+            type: "error",
+            message: result.content,
+          });
+          return;
+        }
+
+        emit({
+          type: "status",
+          text: "Image generated successfully.",
+        });
+      } finally {
+        await concurrency.release();
+      }
+    });
+  }
+
   const models = availableModels();
 
   if (!models.length) {
     return Response.json(
       {
         error:
-          "No AI provider is configured. Add GROQ_API_KEY (or GEMINI_API_KEY / OPENROUTER_API_KEY / HUGGINGFACE_API_KEY) to .env.local and restart the server.",
+          "No AI provider is configured. Add OPENAI_API_KEY (or GROQ_API_KEY / OPENROUTER_API_KEY / HUGGINGFACE_API_KEY) to .env.local and restart the server.",
       },
       { status: 503 },
     );
@@ -593,26 +690,45 @@ async function streamWithTools(
 
         buffer += chunk.text;
 
-        const trimmed = buffer.trimStart();
+        const cleaned = buffer
+          .replace(/<think>[\s\S]*?<\/think>/gi, "")
+          .trimStart();
 
-        if (trimmed.length < 5) continue;
+        const hasOpenThink =
+          /<think>/i.test(buffer) && !/<\/think>/i.test(buffer);
 
-        if (/^tool:/i.test(trimmed)) continue;
+        const looksLikeTool =
+          /^(?:TOOL\s*:|generate_image\b|generate\s+image\b)/i.test(
+            cleaned,
+          );
+
+        if (looksLikeTool) {
+          const parsed = parseToolCall(cleaned);
+
+          if (parsed) {
+            call = parsed;
+            buffer = cleaned;
+            break;
+          }
+
+          continue;
+        }
+
+        if (hasOpenThink) continue;
+        if (!cleaned) continue;
+        if (cleaned.length < 5) continue;
 
         held = false;
         emitted = true;
 
         emit({
           type: "delta",
-          text: buffer,
+          text: cleaned,
         });
 
         buffer = "";
       }
 
-      if (call) {
-        break;
-      }
     } catch (error) {
       if (signal.aborted) return;
 
