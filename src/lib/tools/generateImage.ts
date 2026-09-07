@@ -22,6 +22,12 @@ export async function generateImage(prompt: string): Promise<string> {
   let response: Response;
   try {
     response = await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    clearTimeout(timeout);
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Image generation timed out (120s)");
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }

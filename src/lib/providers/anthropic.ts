@@ -1,4 +1,4 @@
-﻿import { parseSseDeltas, requestJson } from "@/lib/http";
+import { parseSseDeltas, requestJson } from "@/lib/http";
 import type { ChatProvider, ChatRequest } from "@/lib/types";
 
 interface AnthropicEvent {
@@ -50,28 +50,17 @@ export const anthropicProvider: ChatProvider = {
         content: message.content,
       }));
 
-    const isOpus5 = request.model === "claude-opus-5";
-    const isClaude5 =
-      request.model === "claude-opus-5" ||
-      request.model === "claude-sonnet-5";
+    // Determine max tokens based on model
+    const isOpus = request.model.includes("opus");
+    const maxTokens = isOpus ? 4096 : 2048;
 
     const body: Record<string, unknown> = {
       model: request.model,
       system: system || undefined,
       messages,
-      max_tokens: isClaude5 ? 64000 : 4096,
+      max_tokens: maxTokens,
       stream: true,
     };
-
-    if (isClaude5) {
-      body.thinking = {
-        type: "adaptive",
-      };
-
-      body.output_config = {
-        effort: isOpus5 ? "max" : "high",
-      };
-    }
 
     // Do not send `temperature` to current Claude models.
     // Anthropic rejects it for models using the current generation controls.
