@@ -1,85 +1,137 @@
+```ts
 import type { ModelInfo } from "@/lib/types";
 
 /**
  * Curated model catalogue.
- * A model only appears when its provider has server-side credentials.
  *
- * Claude Opus 3.5 is intentionally first because OmniAgent's default model
- * selection uses the first configured model.
+ * IMPORTANT:
+ * - `id` is the exact provider API model identifier.
+ * - A model is exposed by the application only when its provider is
+ *   registered and configured.
+ * - Do not put marketing-only names in `id`.
  */
 export const MODELS: ModelInfo[] = [
+  // ---------------------------------------------------------------------------
+  // OpenAI
+  // ---------------------------------------------------------------------------
   {
-    id: "claude-3-5-opus-20241022",
-    label: "Claude 3.5 Opus (Anthropic)",
-    provider: "anthropic",
+    id: "gpt-6-astra",
+    label: "GPT-6 Astra (OpenAI)",
+    provider: "openai",
     execution: "cloud",
-    capabilities: ["reasoning", "coding", "research"],
+    capabilities: ["coding", "reasoning", "research"],
+    vision: true,
   },
+
+  // ---------------------------------------------------------------------------
+  // Anthropic
+  // ---------------------------------------------------------------------------
   {
-    id: "claude-3-5-sonnet-20241022",
-    label: "Claude 3.5 Sonnet (Anthropic)",
+    id: "claude-opus-5",
+    label: "Claude Opus 5 (Anthropic)",
     provider: "anthropic",
     execution: "cloud",
     capabilities: ["coding", "reasoning", "research"],
   },
   {
-    id: "claude-3-5-haiku-20241022",
-    label: "Claude 3.5 Haiku (Anthropic)",
+    id: "claude-sonnet-5",
+    label: "Claude Sonnet 5 (Anthropic)",
     provider: "anthropic",
     execution: "cloud",
-    capabilities: ["fast"],
+    capabilities: ["coding", "reasoning", "research"],
   },
+
+  // ---------------------------------------------------------------------------
+  // Google Gemini
+  // ---------------------------------------------------------------------------
   {
-    id: "mixtral-8x7b-32768",
-    label: "Mixtral 8x7B (Groq)",
-    provider: "groq",
-    execution: "cloud",
-    capabilities: ["fast", "coding"],
-  },
-  {
-    id: "gemma2-9b-it",
-    label: "Gemma 2 9B (Groq)",
-    provider: "groq",
-    execution: "cloud",
-    capabilities: ["reasoning", "research"],
-  },
-  {
-    id: "gemini-2-0-flash-exp",
-    label: "Gemini 2.0 Flash (Google)",
+    id: "gemini-3.8-flash",
+    label: "Gemini 3.8 Flash (Google)",
     provider: "gemini",
     execution: "cloud",
-    capabilities: ["fast", "research", "reasoning"],
+    capabilities: ["fast", "coding", "reasoning", "research"],
+    vision: true,
   },
+
+  // ---------------------------------------------------------------------------
+  // xAI
+  // ---------------------------------------------------------------------------
   {
-    id: "openai/gpt-4o",
-    label: "GPT-4o (OpenRouter)",
-    provider: "openrouter",
+    id: "grok-4.6",
+    label: "Grok 4.6 (xAI)",
+    provider: "xai",
     execution: "cloud",
-    capabilities: ["reasoning", "coding", "research"],
+    capabilities: ["coding", "reasoning", "research"],
+    vision: true,
   },
+
+  // ---------------------------------------------------------------------------
+  // DeepSeek
+  // ---------------------------------------------------------------------------
   {
-    id: "openai/gpt-4-turbo",
-    label: "GPT-4 Turbo (OpenRouter)",
-    provider: "openrouter",
+    id: "deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    provider: "deepseek",
     execution: "cloud",
-    capabilities: ["coding", "reasoning"],
+    capabilities: ["coding", "reasoning", "research"],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Groq
+  // ---------------------------------------------------------------------------
+  {
+    id: "openai/gpt-oss-120b",
+    label: "GPT-OSS 120B (Groq)",
+    provider: "groq",
+    execution: "cloud",
+    capabilities: ["coding", "reasoning", "research"],
   },
   {
-    id: "meta-llama/llama-3-8b-instruct:free",
-    label: "Llama 3 8B (OpenRouter Free)",
-    provider: "openrouter",
+    id: "openai/gpt-oss-20b",
+    label: "GPT-OSS 20B (Groq)",
+    provider: "groq",
+    execution: "cloud",
+    capabilities: ["fast", "coding", "reasoning"],
+  },
+  {
+    id: "llama-3.3-70b-versatile",
+    label: "Llama 3.3 70B (Groq)",
+    provider: "groq",
+    execution: "cloud",
+    capabilities: ["coding", "reasoning", "research"],
+  },
+  {
+    id: "llama-3.1-8b-instant",
+    label: "Llama 3.1 8B Instant (Groq)",
+    provider: "groq",
     execution: "cloud",
     capabilities: ["fast"],
   },
+
+  // ---------------------------------------------------------------------------
+  // OpenRouter
+  // ---------------------------------------------------------------------------
+  //
+  // Keep this provider available, but do not manufacture model IDs here.
+  // OpenRouter has a live model catalogue and model IDs can change independently
+  // of OmniAgent releases. We will add explicitly verified OpenRouter models
+  // after validating their current IDs against the provider catalogue.
+  //
+
+  // ---------------------------------------------------------------------------
+  // Hugging Face
+  // ---------------------------------------------------------------------------
+  //
+  // The existing Hugging Face provider should remain available, but its model
+  // catalogue should not contain stale hard-coded IDs without a current provider
+  // check. Image generation is handled separately from this chat catalogue.
+  //
+
+  // ---------------------------------------------------------------------------
+  // Ollama
+  // ---------------------------------------------------------------------------
   {
-    id: "meta-llama/llama-3-70b-instruct",
-    label: "Llama 3 70B (Hugging Face)",
-    provider: "huggingface",
-    execution: "cloud",
-    capabilities: ["reasoning"],
-  },
-  {
-    id: "llama3.1",
+    id: "llama3.1:latest",
     label: "Llama 3.1 (Ollama local)",
     provider: "ollama",
     execution: "local",
@@ -89,8 +141,12 @@ export const MODELS: ModelInfo[] = [
 
 export const DEFAULT_SYSTEM_PROMPT = [
   "You are OmniAgent, a helpful multi-provider AI assistant.",
-  "Answer in Markdown. Use fenced code blocks with a language tag for code.",
-  "Be accurate and concise. If you are unsure, say so instead of inventing facts.",
-  "You never have live web access unless a tool result in the conversation provides it;",
-  "in that case cite the given sources.",
+  "Answer in Markdown.",
+  "Use fenced code blocks with a language tag for code.",
+  "Be accurate and concise.",
+  "If you are unsure, say so instead of inventing facts.",
+  "You never have live web access unless a tool result in the conversation provides it.",
+  "When tool results provide sources, preserve and cite those sources appropriately.",
+  "Never claim that an action, tool call, search, or external operation happened unless the application actually completed it.",
 ].join(" ");
+```
