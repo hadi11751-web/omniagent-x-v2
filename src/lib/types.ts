@@ -1,10 +1,14 @@
 export type ProviderId =
-  | "groq"
+  | "openai"
+  | "anthropic"
   | "gemini"
+  | "xai"
+  | "deepseek"
+  | "perplexity"
+  | "groq"
   | "openrouter"
   | "huggingface"
-  | "ollama"
-  | "anthropic";
+  | "ollama";
 
 export type Execution = "cloud" | "local";
 
@@ -22,14 +26,16 @@ export interface ModelInfo {
   provider: ProviderId;
   execution: Execution;
   capabilities: Capability[];
-  /** True for models that can accept image input (screenshots, photos, etc). */
+
+  /** True for models that can accept image input. */
   vision?: boolean;
 }
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
-  /** Data URLs of images attached to this message, for vision-capable models. */
+
+  /** Data URLs of images attached to this message. */
   images?: string[];
 }
 
@@ -44,25 +50,34 @@ export interface ChatProvider {
   id: ProviderId;
   label: string;
   execution: Execution;
-  /** True when the server has everything it needs to call this provider. */
+
+  /** True when the server has everything required to call this provider. */
   isConfigured(): boolean;
-  /** Yields incremental text chunks. Providers without native streaming yield once. */
+
+  /**
+   * Yields incremental text chunks.
+   * Providers without native streaming may yield one final chunk.
+   */
   stream(request: ChatRequest): AsyncGenerator<string>;
 }
 
 export interface ToolResult {
   ok: boolean;
+
   /** Text handed back to the model. */
   content: string;
-  /** Optional structured payload the UI can render (sources, images...). */
+
+  /** Optional structured payload the UI can render. */
   data?: unknown;
 }
 
 export interface ToolDefinition {
   name: string;
   description: string;
-  /** Human readable description of the single string argument the tool takes. */
+
+  /** Human-readable description of the single string argument. */
   argument: string;
+
   run(input: string): Promise<ToolResult>;
 }
 
@@ -71,4 +86,3 @@ export interface Source {
   url: string;
   snippet?: string;
 }
-
