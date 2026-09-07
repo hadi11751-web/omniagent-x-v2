@@ -1,4 +1,3 @@
-```ts
 import type { ModelInfo } from "@/lib/types";
 
 /**
@@ -77,6 +76,24 @@ export const MODELS: ModelInfo[] = [
   },
 
   // ---------------------------------------------------------------------------
+  // Perplexity
+  // ---------------------------------------------------------------------------
+  {
+    id: "sonar-deep-research",
+    label: "Sonar Deep Research (Perplexity)",
+    provider: "perplexity",
+    execution: "cloud",
+    capabilities: ["reasoning", "research"],
+  },
+  {
+    id: "sonar-reasoning-pro",
+    label: "Sonar Reasoning Pro (Perplexity)",
+    provider: "perplexity",
+    execution: "cloud",
+    capabilities: ["reasoning", "research"],
+  },
+
+  // ---------------------------------------------------------------------------
   // Groq
   // ---------------------------------------------------------------------------
   {
@@ -109,25 +126,6 @@ export const MODELS: ModelInfo[] = [
   },
 
   // ---------------------------------------------------------------------------
-  // OpenRouter
-  // ---------------------------------------------------------------------------
-  //
-  // Keep this provider available, but do not manufacture model IDs here.
-  // OpenRouter has a live model catalogue and model IDs can change independently
-  // of OmniAgent releases. We will add explicitly verified OpenRouter models
-  // after validating their current IDs against the provider catalogue.
-  //
-
-  // ---------------------------------------------------------------------------
-  // Hugging Face
-  // ---------------------------------------------------------------------------
-  //
-  // The existing Hugging Face provider should remain available, but its model
-  // catalogue should not contain stale hard-coded IDs without a current provider
-  // check. Image generation is handled separately from this chat catalogue.
-  //
-
-  // ---------------------------------------------------------------------------
   // Ollama
   // ---------------------------------------------------------------------------
   {
@@ -149,4 +147,3 @@ export const DEFAULT_SYSTEM_PROMPT = [
   "When tool results provide sources, preserve and cite those sources appropriately.",
   "Never claim that an action, tool call, search, or external operation happened unless the application actually completed it.",
 ].join(" ");
-```
