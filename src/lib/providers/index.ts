@@ -4,6 +4,7 @@ import { deepseekProvider } from "./deepseek";
 import { geminiProvider } from "./gemini";
 import { huggingFaceProvider } from "./huggingface";
 import { openaiProvider } from "./openai";
+import { xaiProvider } from "./xai";
 import { createOpenAiCompatibleProvider } from "./openaiCompatible";
 import { MODELS } from "@/lib/models";
 import type { ChatProvider, ModelInfo, ProviderId } from "@/lib/types";
@@ -47,16 +48,17 @@ const ollamaProvider: ChatProvider = createOpenAiCompatibleProvider({
 });
 
 /**
- * Only providers with real implementations belong in this registry.
+ * Provider registry.
  *
- * ProviderId is intentionally broader than this object because new providers
- * are added incrementally and must never appear usable before their
- * implementation exists.
+ * A ProviderId is not considered usable merely because it exists in the type
+ * system. The provider must have a concrete implementation here and must
+ * report itself as configured before its models are exposed to the UI.
  */
 export const PROVIDERS: Partial<Record<ProviderId, ChatProvider>> = {
   openai: openaiProvider,
   anthropic: anthropicProvider,
   gemini: geminiProvider,
+  xai: xaiProvider,
   deepseek: deepseekProvider,
   groq: groqProvider,
   openrouter: openRouterProvider,
