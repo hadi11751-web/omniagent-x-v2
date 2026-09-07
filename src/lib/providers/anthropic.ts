@@ -1,5 +1,6 @@
+```ts
 import { parseSseDeltas, requestJson } from "@/lib/http";
-import type { ChatProvider, ChatRequest } from "@/lib/types";
+import type { ChatMessage, ChatProvider, ChatRequest } from "@/lib/types";
 
 interface AnthropicEvent {
   type?: string;
@@ -9,8 +10,20 @@ interface AnthropicEvent {
   };
 }
 
-export function pickDelta(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object") return undefined;
+interface AnthropicContentBlock {
+  type: "text" | "image";
+  text?: string;
+  source?: {
+    type: "base64";
+    media_type: string;
+    data: string;
+  };
+}
+
+function pickDelta(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
 
   const event = payload as AnthropicEvent;
 
@@ -22,6 +35,63 @@ export function pickDelta(payload: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+function imageDataUrlToAnthropicContent(
+  message: ChatMessage,
+): AnthropicContentBlock[] {
+  const content: AnthropicContentBlock[] = [];
+
+  if (message.content.trim()) {
+    content.push({
+      type: "text",
+      text: message.content,
+    });
+  }
+
+  for (const image of message.images ?? []) {
+    const match = /^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,(.+)$/i.exec(
+      image,
+    );
+
+    if (!match) {
+      throw new Error(
+        "Anthropic vision input requires image data URLs using PNG, JPEG, WebP, or GIF.",
+      );
+    }
+
+    const mediaType =
+      match[1].toLowerCase() === "image/jpg"
+        ? "image/jpeg"
+        : match[1].toLowerCase();
+
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: mediaType,
+        data: match[2],
+      },
+    });
+  }
+
+  return content;
+}
+
+function toAnthropicMessage(message: ChatMessage) {
+  const hasImages = Boolean(message.images?.length);
+
+  if (!hasImages) {
+    return {
+      role: message.role,
+      content: message.content,
+    };
+  }
+
+  return {
+    role: message.role,
+    content: imageDataUrlToAnthropicContent(message),
+  };
 }
 
 export const anthropicProvider: ChatProvider = {
@@ -40,30 +110,54 @@ export const anthropicProvider: ChatProvider = {
 
     const system = request.messages
       .filter((message) => message.role === "system")
-      .map((message) => message.content)
+      .map((message) => message.content.trim())
+      .filter(Boolean)
       .join("\n\n");
 
     const messages = request.messages
       .filter((message) => message.role !== "system")
-      .map((message) => ({
-        role: message.role,
-        content: message.content,
-      }));
+      .map(toAnthropicMessage);
 
-    // Determine max tokens based on model
-    const isOpus = request.model.includes("opus");
-    const maxTokens = isOpus ? 4096 : 2048;
+    if (!messages.length) {
+      throw new Error("Anthropic request contains no user/assistant messages");
+    }
+
+    const isClaude5 =
+      request.model === "claude-opus-5" ||
+      request.model === "claude-sonnet-5";
 
     const body: Record<string, unknown> = {
       model: request.model,
-      system: system || undefined,
+
+      /*
+       * Claude Opus 5 and Claude Sonnet 5 support large output budgets.
+       * 16384 keeps OmniAgent practical while remaining far above the old
+       * 2048/4096 limits in the repository.
+       */
+      max_tokens: isClaude5 ? 16384 : 8192,
+
       messages,
-      max_tokens: maxTokens,
+
       stream: true,
     };
 
-    // Do not send `temperature` to current Claude models.
-    // Anthropic rejects it for models using the current generation controls.
+    if (system) {
+      body.system = system;
+    }
+
+    if (isClaude5) {
+      /*
+       * Claude 5 uses adaptive thinking. Do not send legacy temperature,
+       * top_p, or top_k parameters to these current models.
+       */
+      body.thinking = {
+        type: "adaptive",
+      };
+
+      body.output_config = {
+        effort: "high",
+      };
+    }
 
     const response = await requestJson(
       "Anthropic",
@@ -83,3 +177,4 @@ export const anthropicProvider: ChatProvider = {
     yield* parseSseDeltas(response, pickDelta, "Anthropic");
   },
 };
+```
