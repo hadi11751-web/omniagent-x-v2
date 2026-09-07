@@ -30,7 +30,7 @@ const openRouterProvider: ChatProvider = createOpenAiCompatibleProvider({
   },
 });
 
-const ollamaProvider: ChatProvider = createOpenAiCompatibleProvider({
+const ollamaProvider = createOpenAiCompatibleProvider({
   id: "ollama",
   label: "Local (Ollama)",
   execution: "local",
@@ -47,13 +47,6 @@ const ollamaProvider: ChatProvider = createOpenAiCompatibleProvider({
   requiresKey: false,
 });
 
-/**
- * Provider registry.
- *
- * A ProviderId is not considered usable merely because it exists in the type
- * system. The provider must have a concrete implementation here and must
- * report itself as configured before its models are exposed to the UI.
- */
 export const PROVIDERS: Partial<Record<ProviderId, ChatProvider>> = {
   openai: openaiProvider,
   anthropic: anthropicProvider,
@@ -63,7 +56,7 @@ export const PROVIDERS: Partial<Record<ProviderId, ChatProvider>> = {
   groq: groqProvider,
   openrouter: openRouterProvider,
   huggingface: huggingFaceProvider,
-  ollama: ollamaProvider,
+  ollama,
 };
 
 export function configuredProviders(): ChatProvider[] {
