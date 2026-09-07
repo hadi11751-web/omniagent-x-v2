@@ -1,4 +1,4 @@
-﻿import { StreamAbortedError, UpstreamError } from "@/lib/http";
+import { StreamAbortedError, UpstreamError } from "@/lib/http";
 import type {
   ChatProvider,
   ChatRequest,
@@ -56,7 +56,9 @@ export function isRetryableError(error: unknown): boolean {
   }
 
   if (error instanceof Error) {
-    if (error.name === "AbortError") return true;
+    if (error.name === "AbortError") {
+      return true;
+    }
 
     const message = error.message.toLowerCase();
 
@@ -99,13 +101,17 @@ export function getProviderHealth(
     };
   }
 
-  return { ...health };
+  return {
+    ...health,
+  };
 }
 
 export function isProviderHealthy(
   providerId: ProviderId,
 ): boolean {
-  return getProviderHealth(providerId).cooldownUntil <= Date.now();
+  return (
+    getProviderHealth(providerId).cooldownUntil <= Date.now()
+  );
 }
 
 export function recordProviderSuccess(
@@ -118,7 +124,9 @@ export function recordProviderFailure(
   providerId: ProviderId,
   error: unknown,
 ): void {
-  if (!isRetryableError(error)) return;
+  if (!isRetryableError(error)) {
+    return;
+  }
 
   const current = getProviderHealth(providerId);
   const failures = current.failures + 1;
@@ -128,10 +136,13 @@ export function recordProviderFailure(
       failures,
       cooldownUntil: 0,
     });
+
     return;
   }
 
-  const exponent = failures - PROVIDER_FAILURE_THRESHOLD;
+  const exponent =
+    failures - PROVIDER_FAILURE_THRESHOLD;
+
   const cooldownMs = Math.min(
     PROVIDER_COOLDOWN_MAX_MS,
     PROVIDER_COOLDOWN_BASE_MS * 2 ** exponent,
@@ -162,10 +173,14 @@ function backoffDelay(
   );
 
   const jitter = Math.floor(
-    Math.random() * Math.max(1, exponential * 0.25),
+    Math.random() *
+      Math.max(1, exponential * 0.25),
   );
 
-  return Math.min(maxDelayMs, exponential + jitter);
+  return Math.min(
+    maxDelayMs,
+    exponential + jitter,
+  );
 }
 
 export async function* streamWithRetry(
@@ -173,16 +188,22 @@ export async function* streamWithRetry(
   request: ChatRequest,
   policy: RetryPolicy = {},
 ): AsyncGenerator<string> {
-  const config = { ...DEFAULT_POLICY, ...policy };
+  const config = {
+    ...DEFAULT_POLICY,
+    ...policy,
+  };
 
   let attempt = 0;
 
   while (attempt < config.maxAttempts) {
     attempt += 1;
+
     let emitted = false;
 
     try {
-      for await (const chunk of provider.stream(request)) {
+      for await (
+        const chunk of provider.stream(request)
+      ) {
         emitted = true;
         yield chunk;
       }
@@ -190,7 +211,10 @@ export async function* streamWithRetry(
       recordProviderSuccess(provider.id);
       return;
     } catch (error) {
-      recordProviderFailure(provider.id, error);
+      recordProviderFailure(
+        provider.id,
+        error,
+      );
 
       if (
         request.signal?.aborted ||
@@ -215,26 +239,36 @@ export async function* streamWithRetry(
 export function rankFailoverCandidates(
   primary: FailoverCandidate,
   models: ModelInfo[],
-  providers: Record<string, ChatProvider>,
+  providers: Partial<
+    Record<ProviderId, ChatProvider>
+  >,
   capability?: string,
   requiresVision = false,
   allowLocalFallback = false,
 ): FailoverCandidate[] {
   const candidates = models
     .filter((model) => {
-      if (model.id === primary.model.id) return false;
+      if (model.id === primary.model.id) {
+        return false;
+      }
 
-      const candidateProvider = providers[model.provider];
+      const candidateProvider =
+        providers[model.provider];
 
       if (!candidateProvider?.isConfigured()) {
         return false;
       }
 
-      if (!isProviderHealthy(candidateProvider.id)) {
+      if (
+        !isProviderHealthy(candidateProvider.id)
+      ) {
         return false;
       }
 
-      if (requiresVision && !model.vision) {
+      if (
+        requiresVision &&
+        !model.vision
+      ) {
         return false;
       }
 
@@ -242,7 +276,9 @@ export function rankFailoverCandidates(
         return model.execution === "local";
       }
 
-      if (model.provider === primary.provider.id) {
+      if (
+        model.provider === primary.provider.id
+      ) {
         return false;
       }
 
@@ -255,19 +291,32 @@ export function rankFailoverCandidates(
         return false;
       }
 
-      if (!allowLocalFallback && model.execution === "local") {
+      if (
+        !allowLocalFallback &&
+        model.execution === "local"
+      ) {
         return false;
       }
 
       return true;
     })
-    .map((model) => ({
-      model,
-      provider: providers[model.provider],
-    }))
+    .map((model) => {
+      const provider = providers[model.provider];
+
+      if (!provider) {
+        return undefined;
+      }
+
+      return {
+        model,
+        provider,
+      };
+    })
     .filter(
-      (candidate): candidate is FailoverCandidate =>
-        Boolean(candidate.provider),
+      (
+        candidate,
+      ): candidate is FailoverCandidate =>
+        Boolean(candidate),
     );
 
   return candidates.sort((a, b) => {
@@ -302,11 +351,17 @@ export async function* streamWithFailover(
   provider: ChatProvider;
 }> {
   const candidates = [
-    ...(isProviderHealthy(primary.provider.id)
+    ...(isProviderHealthy(
+      primary.provider.id,
+    )
       ? [primary]
       : []),
-    ...alternatives.filter((candidate) =>
-      isProviderHealthy(candidate.provider.id),
+
+    ...alternatives.filter(
+      (candidate) =>
+        isProviderHealthy(
+          candidate.provider.id,
+        ),
     ),
   ];
 
@@ -341,7 +396,10 @@ export async function* streamWithFailover(
     } catch (error) {
       lastError = error;
 
-      if (request.signal?.aborted || emitted) {
+      if (
+        request.signal?.aborted ||
+        emitted
+      ) {
         throw error;
       }
 
