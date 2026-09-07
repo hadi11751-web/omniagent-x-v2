@@ -56,7 +56,7 @@ export const PROVIDERS: Partial<Record<ProviderId, ChatProvider>> = {
   groq: groqProvider,
   openrouter: openRouterProvider,
   huggingface: huggingFaceProvider,
-  ollama,
+  ollama: ollamaProvider,
 };
 
 export function configuredProviders(): ChatProvider[] {
