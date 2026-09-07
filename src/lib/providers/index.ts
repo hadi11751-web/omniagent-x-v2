@@ -1,11 +1,12 @@
-```ts
 import { anthropicProvider } from "./anthropic";
 import { deepseekProvider } from "./deepseek";
 import { geminiProvider } from "./gemini";
 import { huggingFaceProvider } from "./huggingface";
 import { openaiProvider } from "./openai";
+import { perplexityProvider } from "./perplexity";
 import { xaiProvider } from "./xai";
 import { createOpenAiCompatibleProvider } from "./openaiCompatible";
+
 import { MODELS } from "@/lib/models";
 import type { ChatProvider, ModelInfo, ProviderId } from "@/lib/types";
 
@@ -53,6 +54,7 @@ export const PROVIDERS: Partial<Record<ProviderId, ChatProvider>> = {
   gemini: geminiProvider,
   xai: xaiProvider,
   deepseek: deepseekProvider,
+  perplexity: perplexityProvider,
   groq: groqProvider,
   openrouter: openRouterProvider,
   huggingface: huggingFaceProvider,
@@ -87,4 +89,3 @@ export function providerFor(modelId: string): ChatProvider | undefined {
 
   return PROVIDERS[model.provider];
 }
-```
