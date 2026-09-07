@@ -1,30 +1,23 @@
-```ts
-import { requestJson } from "@/lib/http";
-import type { ChatMessage, ChatProvider, ChatRequest } from "@/lib/types";
+import { parseSseDeltas, requestJson } from "@/lib/http";
+import type {
+  ChatMessage,
+  ChatProvider,
+  ChatRequest,
+} from "@/lib/types";
 
-interface OpenAIStreamEvent {
+interface ResponsesEvent {
   type?: string;
-  delta?: unknown;
+  delta?: string;
   error?: {
     message?: string;
-    code?: string;
   };
 }
 
-function getSystemInstructions(
-  messages: ChatMessage[],
-): string | undefined {
-  const instructions = messages
-    .filter((message) => message.role === "system")
-    .map((message) => message.content.trim())
-    .filter(Boolean)
-    .join("\n\n");
-
-  return instructions || undefined;
-}
-
-function toInputMessage(message: ChatMessage) {
-  if (!message.images?.length) {
+function toResponsesInput(message: ChatMessage) {
+  if (
+    message.role === "user" &&
+    message.images?.length
+  ) {
     return {
       role: message.role,
       content: [
@@ -32,63 +25,40 @@ function toInputMessage(message: ChatMessage) {
           type: "input_text",
           text: message.content,
         },
+        ...message.images.map((image) => ({
+          type: "input_image",
+          image_url: image,
+          detail: "high",
+        })),
       ],
     };
   }
 
   return {
     role: message.role,
-    content: [
-      ...(message.content.trim()
-        ? [
-            {
-              type: "input_text",
-              text: message.content,
-            },
-          ]
-        : []),
-      ...message.images.map((imageUrl) => ({
-        type: "input_image",
-        image_url: imageUrl,
-      })),
-    ],
+    content: message.content,
   };
 }
 
-function parseFrame(frame: string): OpenAIStreamEvent | undefined {
-  for (const line of frame.split("\n")) {
-    const trimmed = line.trim();
-
-    if (!trimmed.startsWith("data:")) {
-      continue;
-    }
-
-    const data = trimmed.slice(5).trim();
-
-    if (!data || data === "[DONE]") {
-      return undefined;
-    }
-
-    try {
-      return JSON.parse(data) as OpenAIStreamEvent;
-    } catch {
-      return undefined;
-    }
-  }
-
-  return undefined;
-}
-
-function extractTextDelta(
-  event: OpenAIStreamEvent,
-): string | undefined {
-  if (event.type !== "response.output_text.delta") {
+function pickDelta(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
     return undefined;
   }
 
-  return typeof event.delta === "string"
-    ? event.delta
-    : undefined;
+  const event = payload as ResponsesEvent;
+
+  if (event.type === "response.output_text.delta") {
+    return event.delta ?? undefined;
+  }
+
+  if (event.type === "error") {
+    throw new Error(
+      event.error?.message ??
+        "OpenAI streaming request failed",
+    );
+  }
+
+  return undefined;
 }
 
 export const openaiProvider: ChatProvider = {
@@ -96,36 +66,27 @@ export const openaiProvider: ChatProvider = {
   label: "OpenAI",
   execution: "cloud",
 
-  isConfigured: () => Boolean(process.env.OPENAI_API_KEY),
+  isConfigured: () =>
+    Boolean(process.env.OPENAI_API_KEY),
 
   async *stream(request: ChatRequest) {
     const key = process.env.OPENAI_API_KEY;
 
     if (!key) {
-      throw new Error("OPENAI_API_KEY is not configured");
-    }
-
-    const input = request.messages
-      .filter((message) => message.role !== "system")
-      .map(toInputMessage);
-
-    if (!input.length) {
       throw new Error(
-        "OpenAI request contains no user or assistant messages",
+        "OPENAI_API_KEY is not configured",
       );
     }
 
-    const instructions = getSystemInstructions(request.messages);
+    const input = request.messages.map(
+      toResponsesInput,
+    );
 
     const body: Record<string, unknown> = {
       model: request.model,
       input,
       stream: true,
     };
-
-    if (instructions) {
-      body.instructions = instructions;
-    }
 
     const response = await requestJson(
       "OpenAI",
@@ -138,78 +99,14 @@ export const openaiProvider: ChatProvider = {
         },
         body: JSON.stringify(body),
         signal: request.signal,
+        timeoutMs: 120_000,
       },
     );
 
-    if (!response.body) {
-      throw new Error(
-        "OpenAI returned an empty streaming response",
-      );
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-
-        const normalized = buffer.replace(/\r\n/g, "\n");
-        const frames = normalized.split("\n\n");
-
-        buffer = frames.pop() ?? "";
-
-        for (const frame of frames) {
-          const event = parseFrame(frame);
-
-          if (!event) {
-            continue;
-          }
-
-          if (event.type === "error") {
-            throw new Error(
-              event.error?.message ??
-                "OpenAI streaming request failed",
-            );
-          }
-
-          const text = extractTextDelta(event);
-
-          if (text) {
-            yield text;
-          }
-        }
-      }
-
-      buffer += decoder.decode();
-
-      const event = parseFrame(buffer);
-
-      if (event?.type === "error") {
-        throw new Error(
-          event.error?.message ??
-            "OpenAI streaming request failed",
-        );
-      }
-
-      const text = event
-        ? extractTextDelta(event)
-        : undefined;
-
-      if (text) {
-        yield text;
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    yield* parseSseDeltas(
+      response,
+      pickDelta,
+      "OpenAI",
+    );
   },
 };
-```
