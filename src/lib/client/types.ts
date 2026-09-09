@@ -1,116 +1,92 @@
-export type ProviderId =
-  | "openai"
-  | "anthropic"
-  | "gemini"
-  | "xai"
-  | "deepseek"
-  | "perplexity"
-  | "groq"
-  | "openrouter"
-  | "huggingface"
-  | "ollama";
+import type { ModelInfo, Source } from "@/lib/types";
 
-export type Execution = "cloud" | "local";
+export type Mode = "chat" | "research" | "blend" | "agent";
 
-export type Capability =
-  | "fast"
-  | "coding"
-  | "reasoning"
-  | "research"
-  | "image"
-  | "private";
+export type UiMessageRole = "user" | "assistant";
 
-export interface ModelInfo {
-  /**
-   * Exact model identifier sent to the provider API.
-   * This must be a real provider model ID, never a marketing-only name.
-   */
-  id: string;
+export type UiMessageStatus =
+  | "pending"
+  | "streaming"
+  | "complete"
+  | "error";
 
-  /** Human-readable name shown in the UI. */
-  label: string;
-
-  /** Provider responsible for the model API call. */
-  provider: ProviderId;
-
-  /** Cloud or local execution. */
-  execution: Execution;
-
-  /** Capabilities used by automatic routing and failover ranking. */
-  capabilities: Capability[];
-
-  /** True when the model accepts image input. */
-  vision?: boolean;
+export interface UiMessageMeta {
+  model?: string;
+  provider?: string;
+  execution?: "cloud" | "local";
+  capability?: string;
+  mode?: Mode;
 }
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-
-  /**
-   * Data URLs for images attached to the message.
-   * Providers that support vision may transform these into their wire format.
-   */
-  images?: string[];
-}
-
-export interface ChatRequest {
-  /** Exact provider API model ID. */
-  model: string;
-
-  messages: ChatMessage[];
-
-  /**
-   * Optional legacy sampling control.
-   * Providers may intentionally ignore this when their current API
-   * generation controls do not support it.
-   */
-  temperature?: number;
-
-  /** Allows the request to be cancelled by the caller. */
-  signal?: AbortSignal;
-}
-
-export interface ChatProvider {
-  id: ProviderId;
-  label: string;
-  execution: Execution;
-
-  /**
-   * True only when the provider has everything required to make
-   * a request safely from the server.
-   */
-  isConfigured(): boolean;
-
-  /**
-   * Stream assistant text incrementally.
-   * Providers without native streaming may yield a single final chunk.
-   */
-  stream(request: ChatRequest): AsyncGenerator<string>;
-}
-
-export interface ToolResult {
+export interface UiTool {
+  name: string;
+  argument?: string;
   ok: boolean;
-
-  /** Text handed back to the model/agent. */
-  content: string;
-
-  /** Optional structured payload consumed by the UI. */
-  data?: unknown;
+  summary?: string;
 }
 
-export interface ToolDefinition {
+export interface UiFile {
+  dataUrl: string;
+  filename: string;
+}
+
+export interface UiMessage {
+  id: string;
+  role: UiMessageRole;
+  content: string;
+  createdAt?: number;
+  meta?: UiMessageMeta;
+  status?: UiMessageStatus | UiMessageStatus[];
+  tools?: UiTool[];
+  images?: string[];
+  files?: UiFile[];
+  sources?: Source[];
+  error?: string;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  projectId: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: UiMessage[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  context: string;
+}
+
+export interface ServerProvider {
+  id: string;
+  label: string;
+  execution: "cloud" | "local";
+}
+
+export interface ServerTool {
   name: string;
   description: string;
-
-  /** Human-readable description of the single string input. */
-  argument: string;
-
-  run(input: string): Promise<ToolResult>;
 }
 
-export interface Source {
-  title: string;
-  url: string;
-  snippet?: string;
+export interface ServerStatus {
+  providers: ServerProvider[];
+  models: ModelInfo[];
+  tools: ServerTool[];
+  imageGeneration: boolean;
+  voiceInput: boolean;
+  visionInput: boolean;
+  searchEngine: string;
+}
+
+export interface Settings {
+  model: string;
+  projectId: string;
+  mode: Mode;
+  autoRoute: boolean;
+  toolsEnabled: boolean;
+  saveHistory: boolean;
+  memoryEnabled: boolean;
+  memory: string;
 }
