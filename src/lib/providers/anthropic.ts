@@ -1,5 +1,4 @@
-```ts
-import { parseSseDeltas, requestJson } from "@/lib/http";
+﻿import { parseSseDeltas, requestJson } from "@/lib/http";
 import type { ChatMessage, ChatProvider, ChatRequest } from "@/lib/types";
 
 interface AnthropicEvent {
@@ -20,7 +19,7 @@ interface AnthropicContentBlock {
   };
 }
 
-function pickDelta(payload: unknown): string | undefined {
+export function pickDelta(payload: unknown): string | undefined {
   if (!payload || typeof payload !== "object") {
     return undefined;
   }
@@ -177,4 +176,4 @@ export const anthropicProvider: ChatProvider = {
     yield* parseSseDeltas(response, pickDelta, "Anthropic");
   },
 };
-```
+

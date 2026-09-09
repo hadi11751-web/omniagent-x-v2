@@ -103,7 +103,7 @@ async function* parseOpenAiResponsesStream(
   }
 }
 
-export const openAiProvider = {
+export const openaiProvider = {
   id: "openai" as ProviderId,
   label: "OpenAI",
   execution: "cloud" as Execution,

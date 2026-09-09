@@ -1,4 +1,4 @@
-import { availableModels, PROVIDERS } from "@/lib/providers";
+﻿import { availableModels, PROVIDERS } from "@/lib/providers";
 import {
   rankFailoverCandidates,
   streamWithFailover,
@@ -124,3 +124,4 @@ export async function collectText(
 
   return text.trim();
 }
+
