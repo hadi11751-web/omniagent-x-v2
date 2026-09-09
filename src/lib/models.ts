@@ -4,10 +4,9 @@ import type { ModelInfo } from "@/lib/types";
  * Curated model catalogue.
  *
  * IMPORTANT:
- * - `id` is the exact provider API model identifier.
- * - A model is exposed by the application only when its provider is
- *   registered and configured.
- * - Do not put marketing-only names in `id`.
+ * - `id` must be the exact provider API model identifier.
+ * - A model is exposed only when its provider is registered and configured.
+ * - Do not use marketing names, fake IDs, or unofficial aliases as model IDs.
  */
 export const MODELS: ModelInfo[] = [
   // ---------------------------------------------------------------------------
@@ -18,7 +17,31 @@ export const MODELS: ModelInfo[] = [
     label: "GPT-6 Astra (OpenAI)",
     provider: "openai",
     execution: "cloud",
-    capabilities: ["coding", "reasoning", "research"],
+    capabilities: ["fast", "coding", "reasoning", "research"],
+    vision: true,
+  },
+  {
+    id: "gpt-5.6-sol",
+    label: "GPT-5.6 Sol (OpenAI)",
+    provider: "openai",
+    execution: "cloud",
+    capabilities: ["fast", "coding", "reasoning", "research"],
+    vision: true,
+  },
+  {
+    id: "gpt-5.6-terra",
+    label: "GPT-5.6 Terra (OpenAI)",
+    provider: "openai",
+    execution: "cloud",
+    capabilities: ["fast", "coding", "reasoning", "research"],
+    vision: true,
+  },
+  {
+    id: "gpt-5.6-luna",
+    label: "GPT-5.6 Luna (OpenAI)",
+    provider: "openai",
+    execution: "cloud",
+    capabilities: ["fast", "coding", "reasoning", "research"],
     vision: true,
   },
 
@@ -37,7 +60,7 @@ export const MODELS: ModelInfo[] = [
     label: "Claude Sonnet 5 (Anthropic)",
     provider: "anthropic",
     execution: "cloud",
-    capabilities: ["coding", "reasoning", "research"],
+    capabilities: ["fast", "coding", "reasoning", "research"],
   },
 
   // ---------------------------------------------------------------------------
@@ -109,20 +132,6 @@ export const MODELS: ModelInfo[] = [
     provider: "groq",
     execution: "cloud",
     capabilities: ["fast", "coding", "reasoning"],
-  },
-  {
-    id: "llama-3.3-70b-versatile",
-    label: "Llama 3.3 70B (Groq)",
-    provider: "groq",
-    execution: "cloud",
-    capabilities: ["coding", "reasoning", "research"],
-  },
-  {
-    id: "llama-3.1-8b-instant",
-    label: "Llama 3.1 8B Instant (Groq)",
-    provider: "groq",
-    execution: "cloud",
-    capabilities: ["fast"],
   },
 
   // ---------------------------------------------------------------------------
