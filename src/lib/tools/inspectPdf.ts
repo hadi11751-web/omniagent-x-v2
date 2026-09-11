@@ -1,7 +1,8 @@
-import { PDFDocument } from "pdf-lib";
+﻿import { PDFDocument } from "pdf-lib";
 import type { ToolDefinition } from "@/lib/types";
 
 const MAX_INPUT_CHARS = 12_000_000;
+const MAX_PDF_BYTES = 9_000_000;
 
 function decodePdfInput(input: string): Uint8Array {
   const value = input.trim();
@@ -25,7 +26,22 @@ function decodePdfInput(input: string): Uint8Array {
   }
 
   const normalized = base64.replace(/\s+/g, "");
+
+  if (
+    normalized.length === 0 ||
+    normalized.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      normalized,
+    )
+  ) {
+    throw new Error("expected a valid base64-encoded PDF");
+  }
+
   const bytes = Buffer.from(normalized, "base64");
+
+  if (bytes.length > MAX_PDF_BYTES) {
+    throw new Error("PDF input is too large");
+  }
 
   if (
     bytes.length < 5 ||

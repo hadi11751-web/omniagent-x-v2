@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateImage, generateImageTool } from "./generateImage";
 
 const originalKey = process.env.GEMINI_API_KEY;
@@ -91,6 +91,104 @@ describe("generateImage", () => {
       generateImage("a realistic Bugatti"),
     ).rejects.toThrow(
       "Gemini image generation authentication failed (403)",
+    );
+  });
+
+  it("rejects an oversized prompt before calling Gemini", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      generateImage("x".repeat(8_001)),
+    ).rejects.toThrow("image prompt is too large");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid returned image data", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            output_image: {
+              data: "not-valid-base64!",
+              mime_type: "image/png",
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(
+      generateImage("a realistic Bugatti"),
+    ).rejects.toThrow("Gemini returned invalid image data");
+  });
+
+  it("rejects unsupported returned image formats", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            output_image: {
+              data: "AQID",
+              mime_type: "image/svg+xml",
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(
+      generateImage("a realistic Bugatti"),
+    ).rejects.toThrow("Gemini returned an unsupported image format");
+  });
+
+  it("rejects an oversized returned image", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+
+    const oversizedImage = "A".repeat(16_000_001);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            output_image: {
+              data: oversizedImage,
+              mime_type: "image/png",
+            },
+          }),
+      }),
+    );
+
+    await expect(
+      generateImage("a realistic Bugatti"),
+    ).rejects.toThrow("Gemini returned an image that is too large");
+  });
+  it("handles request failures without leaking implementation details", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("socket secret details")),
+    );
+
+    await expect(
+      generateImage("a realistic Bugatti"),
+    ).rejects.toThrow(
+      "Gemini image generation request failed. Please try again shortly.",
     );
   });
 

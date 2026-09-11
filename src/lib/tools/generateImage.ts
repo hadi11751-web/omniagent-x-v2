@@ -1,8 +1,27 @@
-﻿import type { ToolDefinition } from "@/lib/types";
+import type { ToolDefinition } from "@/lib/types";
 
 const GEMINI_API_KEY = () => process.env.GEMINI_API_KEY?.trim();
 const GEMINI_MODEL = "gemini-3.1-flash-image";
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/interactions";
+
+const MAX_PROMPT_CHARS = 8_000;
+const MAX_IMAGE_BASE64_CHARS = 16_000_000;
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+
+function isValidBase64(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length % 4 === 0 &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value,
+    )
+  );
+}
 
 export function imageGenerationAvailable(): boolean {
   return Boolean(GEMINI_API_KEY());
@@ -15,28 +34,52 @@ export async function generateImage(prompt: string): Promise<string> {
     throw new Error("GEMINI_API_KEY is not configured");
   }
 
+  const normalizedPrompt = prompt.trim();
+
+  if (!normalizedPrompt) {
+    throw new Error("image prompt is empty");
+  }
+
+  if (normalizedPrompt.length > MAX_PROMPT_CHARS) {
+    throw new Error("image prompt is too large");
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
 
   try {
-    const response = await fetch(GEMINI_URL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "x-goog-api-key": key,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        model: GEMINI_MODEL,
-        input: prompt.trim(),
-        response_format: {
-          type: "image",
-          aspect_ratio: "1:1",
-          image_size: "1K",
+    let response: Response;
+
+    try {
+      response = await fetch(GEMINI_URL, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "x-goog-api-key": key,
+          "Content-Type": "application/json",
+          Accept: "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          model: GEMINI_MODEL,
+          input: normalizedPrompt,
+          response_format: {
+            type: "image",
+            aspect_ratio: "1:1",
+            image_size: "1K",
+          },
+        }),
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(
+          "Gemini image generation timed out. Please try again shortly.",
+        );
+      }
+
+      throw new Error(
+        "Gemini image generation request failed. Please try again shortly.",
+      );
+    }
 
     const raw = await response.text();
 
@@ -97,9 +140,23 @@ export async function generateImage(prompt: string): Promise<string> {
       throw new Error("Gemini returned no generated image");
     }
 
-    const mimeType = image.mime_type || "image/png";
+    const imageData = image.data.trim();
 
-    return `data:${mimeType};base64,${image.data}`;
+    if (imageData.length > MAX_IMAGE_BASE64_CHARS) {
+      throw new Error("Gemini returned an image that is too large");
+    }
+
+    if (!isValidBase64(imageData)) {
+      throw new Error("Gemini returned invalid image data");
+    }
+
+    const mimeType = image.mime_type?.trim().toLowerCase() || "image/png";
+
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+      throw new Error("Gemini returned an unsupported image format");
+    }
+
+    return `data:${mimeType};base64,${imageData}`;
   } finally {
     clearTimeout(timeout);
   }

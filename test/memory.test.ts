@@ -1,6 +1,22 @@
-process.env.UPSTASH_REDIS_REST_URL = "https://test-redis.example.com";
+﻿process.env.UPSTASH_REDIS_REST_URL = "https://test-redis.example.com";
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { createEmbeddingMock } = vi.hoisted(() => ({
+  createEmbeddingMock: vi.fn(),
+}));
+
+vi.mock("@/lib/server/embeddings", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/server/embeddings")
+  >("@/lib/server/embeddings");
+
+  return {
+    ...actual,
+    createEmbedding: createEmbeddingMock,
+  };
+});
+
 
 const redisMock = vi.hoisted(() => ({
   zrange: vi.fn(),
@@ -160,9 +176,110 @@ describe("memory store", () => {
     );
 
     expect(result).toEqual([]);
-    expect(redisMock.zrange).toHaveBeenCalledTimes(1);
+    expect(redisMock.zrange).not.toHaveBeenCalled();
   });
 
+  it("stores normalized semantic keywords", async () => {
+    const saved = await saveMemory(
+      "user-1",
+      "The user prefers TypeScript for OmniAgent development.",
+      undefined,
+      ["TypeScript", "OmniAgent development", "  TYPESCRIPT  "],
+    );
+
+    expect(saved?.keywords).toEqual([
+      "typescript",
+      "omniagent development",
+    ]);
+
+    expect(redisMock.set).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        keywords: [
+          "typescript",
+          "omniagent development",
+        ],
+      }),
+    );
+  });
+
+  it("retrieves a memory through semantic keywords", async () => {
+    const memory = {
+      id: "memory-1",
+      fact: "The user prefers a typed development workflow.",
+      createdAt: 100,
+      updatedAt: 100,
+      keywords: [
+        "typescript",
+        "javascript tooling",
+        "omniagent development",
+      ],
+    };
+
+    redisMock.zrange.mockResolvedValue(["memory-1"]);
+    redisMock.get.mockResolvedValue(memory);
+
+    const result = await getRelevantMemories(
+      "user-1",
+      "What language does the user use for their JavaScript tooling?",
+    );
+
+    expect(result).toEqual([memory]);
+  });
+
+  it("ranks stronger semantic matches above weaker matches", async () => {
+    const strongMatch = {
+      id: "memory-1",
+      fact: "The user's project uses a modern development stack.",
+      createdAt: 100,
+      updatedAt: 100,
+      keywords: ["typescript", "omniagent"],
+    };
+
+    const weakMatch = {
+      id: "memory-2",
+      fact: "The user has a project involving development.",
+      createdAt: 200,
+      updatedAt: 200,
+      keywords: ["development"],
+    };
+
+    redisMock.zrange.mockResolvedValue([
+      "memory-2",
+      "memory-1",
+    ]);
+
+    redisMock.get
+      .mockResolvedValueOnce(weakMatch)
+      .mockResolvedValueOnce(strongMatch);
+
+    const result = await getRelevantMemories(
+      "user-1",
+      "typescript omniagent development",
+    );
+
+    expect(result[0]).toEqual(strongMatch);
+    expect(result[1]).toEqual(weakMatch);
+  });
+
+  it("ignores malformed semantic keywords safely", async () => {
+    const saved = await saveMemory(
+      "user-1",
+      "The user prefers concise answers.",
+      undefined,
+      [
+        "  concise  ",
+        "",
+        "!!!",
+        "concise",
+        123 as unknown as string,
+      ],
+    );
+
+    expect(saved?.keywords).toEqual([
+      "concise",
+    ]);
+  });
   it("lists memories newest first", async () => {
     const memories = [
       {
@@ -190,5 +307,94 @@ describe("memory store", () => {
       "new",
       "old",
     ]);
+  });
+});
+
+
+
+describe("semantic embeddings", () => {
+  beforeEach(() => {
+    createEmbeddingMock.mockReset();
+  });
+
+  it("retrieves a semantically similar memory when keywords do not overlap", async () => {
+    createEmbeddingMock.mockResolvedValue([1, 0, 0]);
+
+    redisMock.zrange.mockResolvedValue(["semantic-memory"]);
+    redisMock.get.mockResolvedValue({
+      id: "semantic-memory",
+      fact: "The user prefers TypeScript for application development.",
+      createdAt: 100,
+      updatedAt: 100,
+      keywords: ["programming", "development"],
+      embedding: [0.99, 0.01, 0],
+    });
+
+    const results = await getRelevantMemories(
+      "user-1",
+      "What programming language does the user like?",
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("semantic-memory");
+    expect(createEmbeddingMock).toHaveBeenCalledWith(
+      "What programming language does the user like?",
+    );
+  });
+
+  it("falls back to lexical retrieval when embedding generation fails", async () => {
+    createEmbeddingMock.mockRejectedValue(
+      new Error("embedding unavailable"),
+    );
+
+    redisMock.zrange.mockResolvedValue(["keyword-memory"]);
+    redisMock.get.mockResolvedValue({
+      id: "keyword-memory",
+      fact: "The user prefers TypeScript.",
+      createdAt: 100,
+      updatedAt: 100,
+      keywords: ["typescript", "programming"],
+    });
+
+    const results = await getRelevantMemories(
+      "user-1",
+      "typescript programming",
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("keyword-memory");
+  });
+
+  it("ignores memories with incompatible embedding dimensions", async () => {
+    createEmbeddingMock.mockResolvedValue([1, 0, 0]);
+
+    redisMock.zrange.mockResolvedValue([
+      "bad-memory",
+      "good-memory",
+    ]);
+
+    redisMock.get
+      .mockResolvedValueOnce({
+        id: "bad-memory",
+        fact: "An unrelated fact.",
+        createdAt: 100,
+        updatedAt: 100,
+        embedding: [1, 0],
+      })
+      .mockResolvedValueOnce({
+        id: "good-memory",
+        fact: "Another unrelated fact.",
+        createdAt: 200,
+        updatedAt: 200,
+        embedding: [0.99, 0.01, 0],
+      });
+
+    const results = await getRelevantMemories(
+      "user-1",
+      "something completely different",
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("good-memory");
   });
 });

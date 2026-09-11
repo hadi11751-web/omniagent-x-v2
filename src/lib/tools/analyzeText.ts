@@ -1,4 +1,6 @@
-import type { ToolDefinition } from "@/lib/types";
+﻿import type { ToolDefinition } from "@/lib/types";
+
+const MAX_INPUT_CHARS = 1_000_000;
 
 export function textStats(text: string) {
   const words = text.trim().split(/\s+/).filter(Boolean);
@@ -25,15 +27,29 @@ export const analyzeTextTool: ToolDefinition = {
   description: "Compute statistics (word/sentence counts, frequent terms) for a block of text or a pasted file.",
   argument: "the text to analyse",
   async run(input) {
-    const stats = textStats(input);
-    const content = [
-      `characters: ${stats.characters}`,
-      `words: ${stats.words}`,
-      `sentences: ${stats.sentences}`,
-      `lines: ${stats.lines}`,
-      `average word length: ${stats.averageWordLength}`,
-      `frequent terms: ${stats.topWords.map((entry) => `${entry.word} (${entry.count})`).join(", ") || "n/a"}`,
-    ].join("\n");
-    return { ok: true, content, data: stats };
+    try {
+      if (input.length > MAX_INPUT_CHARS) {
+        throw new Error("input is too large");
+      }
+
+      const stats = textStats(input);
+      const content = [
+        `characters: ${stats.characters}`,
+        `words: ${stats.words}`,
+        `sentences: ${stats.sentences}`,
+        `lines: ${stats.lines}`,
+        `average word length: ${stats.averageWordLength}`,
+        `frequent terms: ${stats.topWords.map((entry) => `${entry.word} (${entry.count})`).join(", ") || "n/a"}`,
+      ].join("\n");
+
+      return { ok: true, content, data: stats };
+    } catch (error) {
+      return {
+        ok: false,
+        content: `analyze_text error: ${(error as Error).message}`,
+      };
+    }
   },
 };
+
+

@@ -42,7 +42,6 @@ export interface ChatMessage {
 export interface ChatRequest {
   model: string;
   messages: ChatMessage[];
-  temperature?: number;
   signal?: AbortSignal;
 }
 
@@ -86,3 +85,4 @@ export interface Source {
   url: string;
   snippet?: string;
 }
+

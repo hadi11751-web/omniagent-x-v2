@@ -15,24 +15,53 @@ interface OpenAiResponseEvent {
   };
 }
 
-function buildInput(messages: ChatMessage[]): string {
-  return messages
-    .map((message) => {
-      const role =
-        message.role === "system"
-          ? "System"
-          : message.role === "assistant"
-            ? "Assistant"
-            : "User";
+type OpenAiInputContent =
+  | {
+      type: "input_text";
+      text: string;
+    }
+  | {
+      type: "input_image";
+      image_url: string;
+    };
 
-      const images =
-        message.images?.length
-          ? `\n[Attached images: ${message.images.length}]`
-          : "";
+interface OpenAiInputMessage {
+  role: "system" | "user" | "assistant";
+  content: OpenAiInputContent[];
+}
 
-      return `${role}:\n${message.content}${images}`;
-    })
-    .join("\n\n");
+function buildInput(messages: ChatMessage[]): OpenAiInputMessage[] {
+  return messages.map((message) => {
+    const role =
+      message.role === "system"
+        ? "system"
+        : message.role === "assistant"
+          ? "assistant"
+          : "user";
+
+    const content: OpenAiInputContent[] = [
+      {
+        type: "input_text",
+        text: message.content,
+      },
+    ];
+
+    if (message.role === "user") {
+      for (const image of message.images ?? []) {
+        if (image.startsWith("data:image/")) {
+          content.push({
+            type: "input_image",
+            image_url: image,
+          });
+        }
+      }
+    }
+
+    return {
+      role,
+      content,
+    };
+  });
 }
 
 async function* parseOpenAiResponsesStream(

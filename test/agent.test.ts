@@ -93,8 +93,8 @@ describe("Agent execution", () => {
       .filter((event) => (event as { type?: string }).type === "status")
       .map((event) => (event as { text?: string }).text);
 
-    expect(statuses).toContain("Planning with Claude Opus...");
-    expect(statuses).toContain("Verifying agent work with Claude Opus...");
+    expect(statuses).toContain("Planning with Claude Opus 5...");
+    expect(statuses).toContain("Verifying agent work with Claude Opus 5...");
     expect(statuses).toContain(
       "Agent verified its work after 1 step(s).",
     );

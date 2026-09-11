@@ -40,6 +40,19 @@ interface Body {
 
 const MAX_TOOL_STEPS = 3;
 
+async function runToolSafely(
+  tool: { run(input: string): Promise<{ ok: boolean; content: string; data?: unknown }> },
+  input: string,
+) {
+  try {
+    return await tool.run(input);
+  } catch {
+    return {
+      ok: false,
+      content: "Tool execution failed unexpectedly.",
+    };
+  }
+}
 function badRequest(message: string) {
   return Response.json({ error: message }, { status: 400 });
 }
@@ -850,7 +863,7 @@ async function streamWithTools(
       text: `Running ${tool.name}...`,
     });
 
-    const result = await tool.run(call.argument);
+    const result = await runToolSafely(tool, call.argument);
 
     emitToolResult(
       emit,
@@ -976,3 +989,7 @@ async function retryWithoutTools(
 
   return emitted;
 }
+
+
+
+

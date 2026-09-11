@@ -1,4 +1,4 @@
-import { analyzeTextTool } from "./analyzeText";
+﻿import { analyzeTextTool } from "./analyzeText";
 import { calculatorTool } from "./calculator";
 import { fetchUrlTool } from "./fetchUrl";
 import { generateImageTool, imageGenerationAvailable } from "./generateImage";
@@ -110,4 +110,6 @@ export function parseNativeToolCall(raw: string | undefined): { name: string; ar
   const preferred = entries.find(([key]) => ARGUMENT_KEYS.includes(key.toLowerCase())) ?? entries[0];
   return { name: call.name.toLowerCase(), argument: preferred[1].trim() };
 }
+
+
 

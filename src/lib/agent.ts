@@ -155,7 +155,7 @@ export async function runAgentPlan(
   ): Promise<AgentState[]> => {
     emit({
       type: "status",
-      text: previousState.length ? "Re-planning..." : "Planning with Claude Opus...",
+      text: previousState.length ? "Re-planning..." : `Planning with ${model.label}...`,
     });
 
     const plannerContext = previousState.length
@@ -344,7 +344,7 @@ export async function runAgentPlan(
   };
 
   const verify = async (): Promise<"verified" | "needs_more"> => {
-    emit({ type: "status", text: "Verifying agent work with Claude Opus..." });
+    emit({ type: "status", text: `Verifying agent work with ${model.label}...` });
 
     const verificationPrompt: ChatMessage[] = [
       {
@@ -467,3 +467,6 @@ export async function runAgentPlan(
     });
   }
 }
+
+
+

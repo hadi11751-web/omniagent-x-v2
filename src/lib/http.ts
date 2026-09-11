@@ -30,9 +30,17 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 export async function requestJson(
   label: string,
   url: string,
-  init: RequestInit & { timeoutMs?: number } = {},
+  init: RequestInit & {
+    timeoutMs?: number;
+    allowNonOk?: boolean;
+  } = {},
 ): Promise<Response> {
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = init;
+  const {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    signal,
+    allowNonOk = false,
+    ...rest
+  } = init;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -55,7 +63,7 @@ export async function requestJson(
       signal: controller.signal,
     });
 
-    if (!response.ok) {
+    if (!response.ok && !allowNonOk) {
       const raw = (await response.text().catch(() => "")).slice(
         0,
         2000,
