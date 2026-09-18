@@ -15,24 +15,38 @@ interface OpenAiResponseEvent {
   };
 }
 
-function buildInput(messages: ChatMessage[]): string {
-  return messages
-    .map((message) => {
-      const role =
-        message.role === "system"
-          ? "System"
-          : message.role === "assistant"
-            ? "Assistant"
-            : "User";
+interface OpenAiInputContentItem {
+  type: "input_text" | "output_text" | "input_image";
+  text?: string;
+  image_url?: string;
+}
 
-      const images =
-        message.images?.length
-          ? `\n[Attached images: ${message.images.length}]`
-          : "";
+interface OpenAiInputItem {
+  role: "system" | "user" | "assistant";
+  content: OpenAiInputContentItem[];
+}
 
-      return `${role}:\n${message.content}${images}`;
-    })
-    .join("\n\n");
+/**
+ * Builds OpenAI's Responses API structured input. Previously this
+ * collapsed everything into one flat string and only appended a text
+ * marker like "[Attached images: 1]" for image messages — the model
+ * never actually received the image. This sends real input_image items
+ * per OpenAI's documented multimodal input format instead.
+ */
+function buildInput(messages: ChatMessage[]): OpenAiInputItem[] {
+  return messages.map((message) => {
+    const content: OpenAiInputContentItem[] = [];
+    if (message.content.trim()) {
+      content.push({
+        type: message.role === "assistant" ? "output_text" : "input_text",
+        text: message.content,
+      });
+    }
+    for (const image of message.images ?? []) {
+      content.push({ type: "input_image", image_url: image });
+    }
+    return { role: message.role, content };
+  });
 }
 
 async function* parseOpenAiResponsesStream(

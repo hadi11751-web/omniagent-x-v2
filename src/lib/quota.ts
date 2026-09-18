@@ -26,11 +26,30 @@ function todayKey(userId: string): string {
   return `usage:${userId}:${day}`;
 }
 
+/** Read-only: reports current usage without incrementing it. Used to fail fast on obviously-invalid requests before charging anything. */
+export async function peekQuota(userId: string): Promise<{ allowed: boolean; remaining: number; limit: number | null }> {
+  const plan = await getPlan();
+  if (plan === "paid") return { allowed: true, remaining: Infinity, limit: null };
+  if (!redisConfigured()) return { allowed: true, remaining: FREE_DAILY_LIMIT, limit: FREE_DAILY_LIMIT };
+
+  const count = Number((await redis().get(todayKey(userId))) ?? 0);
+  return {
+    allowed: count < FREE_DAILY_LIMIT,
+    remaining: Math.max(0, FREE_DAILY_LIMIT - count),
+    limit: FREE_DAILY_LIMIT,
+  };
+}
+
 /**
  * Returns { allowed, remaining, limit }. Paid users are always allowed with
  * no counting at all. Free users are capped at FREE_DAILY_LIMIT messages
  * per UTC day. If Redis isn't configured, this fails open (allowed) rather
  * than breaking chat entirely for a missing optional feature.
+ *
+ * Call this only once a request is actually going to be attempted (after
+ * basic validation and model/provider resolution) — not at the very start
+ * of the route — so requests that fail validation don't cost quota. Pair
+ * with refundQuota() if the attempt then fails before producing any output.
  */
 export async function checkAndConsumeQuota(userId: string): Promise<{
   allowed: boolean;
@@ -58,5 +77,19 @@ export async function checkAndConsumeQuota(userId: string): Promise<{
     remaining: Math.max(0, FREE_DAILY_LIMIT - count),
     limit: FREE_DAILY_LIMIT,
   };
+}
+
+/** Best-effort refund when a charged request fails before producing any output. Never throws. */
+export async function refundQuota(userId: string): Promise<void> {
+  try {
+    const plan = await getPlan();
+    if (plan === "paid" || !redisConfigured()) return;
+    const key = todayKey(userId);
+    const client = redis();
+    const current = Number((await client.get(key)) ?? 0);
+    if (current > 0) await client.decr(key);
+  } catch {
+    // Refunding is a best-effort courtesy; never let it crash the request.
+  }
 }
 

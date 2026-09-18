@@ -9,6 +9,7 @@ export interface SendOptions {
   autoRoute: boolean;
   toolsEnabled: boolean;
   memory?: string;
+  memoryEnabled?: boolean;
   projectContext?: string;
   signal: AbortSignal;
   onEvent: (event: StreamEvent) => void;
@@ -41,7 +42,20 @@ export async function sendChat(options: SendOptions): Promise<void> {
   let buffer = "";
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      // The stream can end with one final line that has no trailing
+      // newline — without flushing it here, that last event is silently
+      // dropped instead of ever reaching onEvent.
+      const trailing = buffer.trim();
+      if (trailing) {
+        try {
+          onEvent(JSON.parse(trailing) as StreamEvent);
+        } catch {
+          /* ignore malformed line */
+        }
+      }
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
