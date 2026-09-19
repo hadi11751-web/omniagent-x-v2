@@ -18,7 +18,7 @@ describe("distributed concurrency protection", () => {
   });
 
   it("has a finite slot recovery TTL", () => {
-    expect(CONCURRENCY_TTL_SECONDS).toBe(120);
+    expect(CONCURRENCY_TTL_SECONDS).toBe(180);
   });
 
   it("allows requests up to the configured per-user limit", async () => {

@@ -1,7 +1,7 @@
 ﻿import { Redis } from "@upstash/redis";
 
 const MAX_CONCURRENT_PER_USER = 3;
-const SLOT_TTL_SECONDS = 120;
+const SLOT_TTL_SECONDS = 180;
 
 const localCounts = new Map<string, number>();
 
