@@ -3,7 +3,7 @@ import { runAgentPlan } from "@/lib/agent";
 import { getRelevantMemories } from "@/lib/server/memory";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/models";
 import { availableModels, providerFor, PROVIDERS } from "@/lib/providers";
-import { checkAndConsumeQuota } from "@/lib/quota";
+import { checkAndConsumeQuota, peekQuota, refundQuota } from "@/lib/quota";
 import { acquireConcurrency } from "@/lib/concurrency";
 import { classify, routeModel } from "@/lib/router";
 import {
@@ -35,6 +35,7 @@ interface Body {
   autoRoute?: boolean;
   toolsEnabled?: boolean;
   memory?: string;
+  memoryEnabled?: boolean;
   projectContext?: string;
 }
 
@@ -91,11 +92,11 @@ export async function POST(request: Request) {
     return badRequest("messages must contain at least one entry");
   }
 
-  const quota = await checkAndConsumeQuota(userId);
-  if (!quota.allowed) {
+  const quotaPeek = await peekQuota(userId);
+  if (!quotaPeek.allowed) {
     return Response.json(
       {
-        error: `You've used today's ${quota.limit} free messages. Upgrade for unlimited access, or come back tomorrow.`,
+        error: `You've used today's ${quotaPeek.limit} free messages. Upgrade for unlimited access, or come back tomorrow.`,
         upgradeRequired: true,
       },
       { status: 429 },
@@ -143,7 +144,20 @@ export async function POST(request: Request) {
       );
     }
 
+    const imageQuota = await checkAndConsumeQuota(userId);
+    if (!imageQuota.allowed) {
+      await concurrency.release();
+      return Response.json(
+        {
+          error: `You've used today's ${imageQuota.limit} free messages. Upgrade for unlimited access, or come back tomorrow.`,
+          upgradeRequired: true,
+        },
+        { status: 429 },
+      );
+    }
+
     return createEventStream(async (emit) => {
+      let succeeded = false;
       try {
         emit({
           type: "meta",
@@ -188,11 +202,16 @@ export async function POST(request: Request) {
           return;
         }
 
+        succeeded = true;
         emit({
           type: "status",
           text: "Image generated successfully.",
         });
       } finally {
+        // A failed attempt (empty prompt, tool error, thrown exception)
+        // produced no real output, so it shouldn't cost the user's quota —
+        // only a genuinely successful generation should be charged.
+        if (!succeeded) await refundQuota(userId);
         await concurrency.release();
       }
     });
@@ -268,6 +287,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const mainQuota = await checkAndConsumeQuota(userId);
+  if (!mainQuota.allowed) {
+    await concurrency.release();
+    return Response.json(
+      {
+        error: `You've used today's ${mainQuota.limit} free messages. Upgrade for unlimited access, or come back tomorrow.`,
+        upgradeRequired: true,
+      },
+      { status: 429 },
+    );
+  }
+
   let streamOwnsConcurrency = false;
 
   try {
@@ -282,27 +313,29 @@ export async function POST(request: Request) {
     );
   }
 
-  if (body.memory?.trim()) {
+  if (body.memoryEnabled && body.memory?.trim()) {
     systemParts.push(
       `Long-term memory the user saved:\n${body.memory.trim()}`,
     );
   }
 
-  try {
-    const automaticMemories = await getRelevantMemories(
-      userId,
-      lastUser,
-    );
-
-    if (automaticMemories.length) {
-      systemParts.push(
-        `Automatically remembered from previous chats:\n${automaticMemories
-          .map((memory) => `- ${memory.fact}`)
-          .join("\n")}`,
+  if (body.memoryEnabled) {
+    try {
+      const automaticMemories = await getRelevantMemories(
+        userId,
+        lastUser,
       );
+
+      if (automaticMemories.length) {
+        systemParts.push(
+          `Automatically remembered from previous chats:\n${automaticMemories
+            .map((memory) => `- ${memory.fact}`)
+            .join("\n")}`,
+        );
+      }
+    } catch (error) {
+      console.error("automatic_memory_retrieval_failed", error);
     }
-  } catch (error) {
-    console.error("automatic_memory_retrieval_failed", error);
   }
 
   const systemWithoutTools = systemParts.join("\n\n");
@@ -396,6 +429,9 @@ export async function POST(request: Request) {
   return response;
   } finally {
     if (!streamOwnsConcurrency) {
+      // Setup threw before the stream itself ever started, so the request
+      // never actually ran — refund what was charged above.
+      await refundQuota(userId);
       await concurrency.release();
     }
   }

@@ -235,6 +235,7 @@ export default function OmniAgentApp() {
           autoRoute: settings.autoRoute,
           toolsEnabled: settings.toolsEnabled,
           memory: settings.memoryEnabled ? settings.memory : undefined,
+          memoryEnabled: settings.memoryEnabled,
           projectContext: project?.context,
           signal: controller.signal,
           onEvent: (event) => {
@@ -333,7 +334,7 @@ export default function OmniAgentApp() {
         abortRef.current = undefined;
         markDirty(conversationId);
 
-        if (assistantText.trim()) {
+        if (settings.memoryEnabled && assistantText.trim()) {
           void saveAutomaticMemory(
             conversationId,
             [

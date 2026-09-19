@@ -168,7 +168,6 @@ describe("fetchUrl security", () => {
       },
     });
 
-    const cancel = vi.spyOn(response.body!, "cancel");
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
 

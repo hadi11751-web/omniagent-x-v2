@@ -69,7 +69,7 @@ export async function generateImage(prompt: string): Promise<string> {
           },
         }),
       });
-    } catch (error) {
+    } catch {
       if (controller.signal.aborted) {
         throw new Error(
           "Gemini image generation timed out. Please try again shortly.",
