@@ -211,7 +211,7 @@ export async function POST(request: Request) {
         // A failed attempt (empty prompt, tool error, thrown exception)
         // produced no real output, so it shouldn't cost the user's quota —
         // only a genuinely successful generation should be charged.
-        if (!succeeded) await refundQuota(userId);
+        if (!succeeded) await refundQuota(userId, imageQuota.reservationId);
         await concurrency.release();
       }
     });
@@ -431,7 +431,7 @@ export async function POST(request: Request) {
     if (!streamOwnsConcurrency) {
       // Setup threw before the stream itself ever started, so the request
       // never actually ran — refund what was charged above.
-      await refundQuota(userId);
+      await refundQuota(userId, mainQuota.reservationId);
       await concurrency.release();
     }
   }
