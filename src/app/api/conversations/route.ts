@@ -1,4 +1,5 @@
-﻿import { auth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
+import { logServerError } from "@/lib/server/logger";
 import { NextRequest, NextResponse } from "next/server";
 import {
   deleteAllConversations,
@@ -33,7 +34,7 @@ export async function GET() {
       );
     }
 
-    console.error("conversation_list_failed", error);
+    logServerError("conversation_list_failed", error);
 
     return NextResponse.json(
       { error: "Failed to load conversations" },
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error("conversation_save_failed", error);
+    logServerError("conversation_save_failed", error);
 
     return NextResponse.json(
       { error: "Failed to save conversation" },
@@ -81,7 +82,7 @@ export async function DELETE() {
       );
     }
 
-    console.error("conversation_delete_all_failed", error);
+    logServerError("conversation_delete_all_failed", error);
 
     return NextResponse.json(
       { error: "Failed to delete conversations" },

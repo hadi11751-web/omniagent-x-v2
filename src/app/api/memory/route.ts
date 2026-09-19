@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { logServerError } from "@/lib/server/logger";
 import { collectText } from "@/lib/stream";
 import {
   listMemories,
@@ -108,10 +109,7 @@ export async function GET() {
       memories,
     });
   } catch (error) {
-    console.error(
-      "memory_list_failed",
-      error,
-    );
+    logServerError("memory_list_failed", error);
 
     return NextResponse.json(
       { error: "Failed to load memories" },
@@ -235,10 +233,7 @@ export async function POST(
       memories,
     });
   } catch (error) {
-    console.error(
-      "memory_extraction_failed",
-      error,
-    );
+    logServerError("memory_extraction_failed", error);
 
     /*
      * Automatic memory is an enhancement,

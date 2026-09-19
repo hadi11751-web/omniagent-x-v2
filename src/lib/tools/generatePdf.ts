@@ -1,3 +1,4 @@
+import { logServerError } from "@/lib/server/logger";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { ToolDefinition } from "@/lib/types";
 
@@ -107,7 +108,8 @@ export const generatePdfTool: ToolDefinition = {
         data: { file: { dataUrl, filename: `${title.replace(/[^a-z0-9-_ ]/gi, "").trim() || "document"}.pdf` } },
       };
     } catch (error) {
-      return { ok: false, content: `generate_pdf error: ${(error as Error).message}` };
+      logServerError("generate_pdf_failed", error);
+      return { ok: false, content: "PDF generation failed. Please try again." };
     }
   },
 };

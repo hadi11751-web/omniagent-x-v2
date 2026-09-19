@@ -1,3 +1,4 @@
+import { logServerError } from "@/lib/server/logger";
 import { collectText, type StreamEvent } from "@/lib/stream";
 import {
   availableTools,
@@ -251,11 +252,12 @@ export async function runAgentPlan(
         }
       } catch (error) {
         item.status = "failed";
-        item.result = (error as Error).message;
+        logServerError("agent_tool_execution_failed", error);
+        item.result = "Tool execution failed.";
 
         conversation.push({
           role: "system",
-          content: `Agent tool error from ${tool.name}(${item.argument}): ${(error as Error).message}`,
+          content: `Agent tool error from ${tool.name}: execution failed.`
         });
 
         if (attempt <= MAX_AGENT_RETRIES) {
@@ -461,9 +463,10 @@ export async function runAgentPlan(
   } catch (error) {
     if (signal.aborted) return;
 
+    logServerError("agent_execution_failed", error);
     emit({
       type: "status",
-      text: `Agent execution stopped safely: ${(error as Error).message}`,
+      text: "Agent execution stopped safely. Please try again.",
     });
   }
 }

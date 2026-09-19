@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logServerError } from "@/lib/server/logger";
 import Stripe from "stripe";
 import { clerkClient } from "@clerk/nextjs/server";
 import {
@@ -32,7 +33,8 @@ export async function POST(request: Request) {
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
   } catch (error) {
-    return NextResponse.json({ error: `signature verification failed: ${(error as Error).message}` }, { status: 400 });
+    logServerError("stripe_signature_verification_failed", error);
+    return NextResponse.json({ error: "signature verification failed" }, { status: 400 });
   }
 
   const relevantEvent =

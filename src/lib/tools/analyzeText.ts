@@ -1,4 +1,5 @@
-﻿import type { ToolDefinition } from "@/lib/types";
+import { logServerError } from "@/lib/server/logger";
+import type { ToolDefinition } from "@/lib/types";
 
 const MAX_INPUT_CHARS = 1_000_000;
 
@@ -44,9 +45,10 @@ export const analyzeTextTool: ToolDefinition = {
 
       return { ok: true, content, data: stats };
     } catch (error) {
+      logServerError("analyze_text_failed", error);
       return {
         ok: false,
-        content: `analyze_text error: ${(error as Error).message}`,
+        content: "Analyze text failed: input is too large.",
       };
     }
   },

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logServerError } from "@/lib/server/logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,12 +51,14 @@ export async function POST(request: Request) {
       } catch {
         // raw text is fine as-is
       }
-      return NextResponse.json({ error: `Groq transcription failed (${response.status}): ${detail}` }, { status: 502 });
+      logServerError("transcription_upstream_failed", new Error(`Groq transcription failed with status ${response.status}: ${detail}`));
+      return NextResponse.json({ error: "Transcription service failed. Please try again." }, { status: 502 });
     }
     const data = JSON.parse(raw) as { text?: string };
     return NextResponse.json({ text: (data.text ?? "").trim() });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 502 });
+    logServerError("transcription_failed", error);
+    return NextResponse.json({ error: "Transcription failed. Please try again." }, { status: 502 });
   }
 }
 

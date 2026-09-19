@@ -1,3 +1,4 @@
+import { logServerError } from "@/lib/server/logger";
 import { StreamAbortedError } from "@/lib/http";
 import { runAgentPlan } from "@/lib/agent";
 import { getRelevantMemories } from "@/lib/server/memory";
@@ -334,7 +335,7 @@ export async function POST(request: Request) {
         );
       }
     } catch (error) {
-      console.error("automatic_memory_retrieval_failed", error);
+      logServerError("automatic_memory_retrieval_failed", error);
     }
   }
 
@@ -477,9 +478,10 @@ async function runResearch(
       ].join("\n"),
     });
   } catch (error) {
+    logServerError("chat_search_failed", error);
     emit({
       type: "status",
-      text: `Search unavailable: ${(error as Error).message}`,
+      text: "Search unavailable. Please try again.",
     });
   }
 
@@ -531,9 +533,10 @@ async function runBlend(
         });
       }
     } catch (error) {
+      logServerError("chat_blend_participant_failed", error);
       emit({
         type: "status",
-        text: `${participant.label} failed: ${(error as Error).message}`,
+        text: `${participant.label} failed. Please try again.`,
       });
     }
   }
@@ -792,9 +795,10 @@ async function streamWithTools(
 
       if (!native || emitted) {
         if (emitted) {
+          logServerError("chat_tool_request_failed", error);
           emit({
             type: "error",
-            message: (error as Error).message,
+            message: "The tool request could not be completed.",
           });
         } else if (
           !(await retryWithoutTools(
@@ -807,9 +811,10 @@ async function streamWithTools(
             models,
           ))
         ) {
+          logServerError("chat_retry_without_tools_failed", error);
           emit({
             type: "error",
-            message: (error as Error).message,
+            message: "The request could not be completed.",
           });
         }
 
@@ -1015,9 +1020,10 @@ async function retryWithoutTools(
     }
   } catch (error) {
     if (!emitted) {
+      logServerError("chat_request_failed", error);
       emit({
         type: "error",
-        message: (error as Error).message,
+        message: "The request could not be completed.",
       });
       return false;
     }

@@ -1,3 +1,4 @@
+import { logServerError } from "@/lib/server/logger";
 import type { ToolDefinition } from "@/lib/types";
 
 const GEMINI_API_KEY = () => process.env.GEMINI_API_KEY?.trim();
@@ -187,9 +188,10 @@ export const generateImageTool: ToolDefinition = {
         data: { image: dataUrl },
       };
     } catch (error) {
+      logServerError("generate_image_failed", error);
       return {
         ok: false,
-        content: `generate_image error: ${(error as Error).message}`,
+        content: "Image generation failed. Please try again.",
       };
     }
   },

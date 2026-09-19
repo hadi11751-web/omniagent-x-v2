@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { logServerError } from "@/lib/server/logger";
 import {
   deleteConversation,
   getConversation,
@@ -30,7 +31,7 @@ export async function GET(
 
     return NextResponse.json({ conversation });
   } catch (error) {
-    console.error("conversation_get_failed", error);
+    logServerError("conversation_get_failed", error);
     return NextResponse.json(
       { error: "Failed to load conversation" },
       { status: 500 },
@@ -53,7 +54,7 @@ export async function DELETE(
     await deleteConversation(userId, id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("conversation_delete_failed", error);
+    logServerError("conversation_delete_failed", error);
     return NextResponse.json(
       { error: "Failed to delete conversation" },
       { status: 500 },

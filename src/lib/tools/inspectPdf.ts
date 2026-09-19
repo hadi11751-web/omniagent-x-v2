@@ -1,4 +1,5 @@
-﻿import { PDFDocument } from "pdf-lib";
+import { logServerError } from "@/lib/server/logger";
+import { PDFDocument } from "pdf-lib";
 import type { ToolDefinition } from "@/lib/types";
 
 const MAX_INPUT_CHARS = 12_000_000;
@@ -123,9 +124,10 @@ export const inspectPdfTool: ToolDefinition = {
         },
       };
     } catch (error) {
+      logServerError("inspect_pdf_failed", error);
       return {
         ok: false,
-        content: `inspect_pdf error: ${(error as Error).message}`,
+        content: "PDF inspection failed. Please try again.",
       };
     }
   },

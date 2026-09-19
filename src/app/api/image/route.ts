@@ -1,4 +1,5 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { logServerError } from "@/lib/server/logger";
 import { generateImage, imageGenerationAvailable } from "@/lib/tools/generateImage";
 
 export const runtime = "nodejs";
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
   try {
     return NextResponse.json({ image: await generateImage(prompt) });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 502 });
+    logServerError("image_generation_failed", error);
+    return NextResponse.json({ error: "Image generation failed. Please try again." }, { status: 502 });
   }
 }

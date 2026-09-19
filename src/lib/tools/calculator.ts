@@ -1,4 +1,5 @@
-﻿import type { ToolDefinition } from "@/lib/types";
+import { logServerError } from "@/lib/server/logger";
+import type { ToolDefinition } from "@/lib/types";
 
 const TOKEN = /\d+(?:\.\d+)?|[-+*/%^()]|\b(?:pi|e|sqrt|abs|min|max|round|floor|ceil|log|sin|cos|tan)\b|,/gi;
 
@@ -240,7 +241,8 @@ export const calculatorTool: ToolDefinition = {
       const result = evaluate(input.trim());
       return { ok: true, content: `${input.trim()} = ${result}`, data: { result } };
     } catch (error) {
-      return { ok: false, content: `calculator error: ${(error as Error).message}` };
+      logServerError("calculator_failed", error);
+      return { ok: false, content: "Calculator could not evaluate the expression." };
     }
   },
 };

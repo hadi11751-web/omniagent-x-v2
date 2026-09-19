@@ -1,4 +1,5 @@
-﻿import { availableModels, PROVIDERS } from "@/lib/providers";
+import { availableModels, PROVIDERS } from "@/lib/providers";
+import { logServerError } from "@/lib/server/logger";
 import {
   rankFailoverCandidates,
   streamWithFailover,
@@ -32,7 +33,8 @@ export function createEventStream(
       try {
         await producer(emit);
       } catch (error) {
-        emit({ type: "error", message: (error as Error).message });
+        logServerError("stream_producer_failed", error);
+        emit({ type: "error", message: "The request could not be completed. Please try again." });
       } finally {
         emit({ type: "done" });
         closed = true;
