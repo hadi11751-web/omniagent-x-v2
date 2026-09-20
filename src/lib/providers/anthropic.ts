@@ -121,22 +121,26 @@ export const anthropicProvider: ChatProvider = {
       throw new Error("Anthropic request contains no user/assistant messages");
     }
 
-    const isClaude5 =
-      request.model === "claude-opus-5" ||
-      request.model === "claude-sonnet-5";
+    const ADAPTIVE_THINKING_MODELS = new Set([
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "claude-fable-5-1",
+    ]);
+
+    const isAdaptiveThinking =
+      ADAPTIVE_THINKING_MODELS.has(request.model);
+
+    const maxTokens =
+      request.model === "claude-fable-5-1"
+        ? 128_000
+        : isAdaptiveThinking
+          ? 16_384
+          : 8_192;
 
     const body: Record<string, unknown> = {
       model: request.model,
-
-      /*
-       * Claude Opus 5 and Claude Sonnet 5 support large output budgets.
-       * 16384 keeps OmniAgent practical while remaining far above the old
-       * 2048/4096 limits in the repository.
-       */
-      max_tokens: isClaude5 ? 16384 : 8192,
-
+      max_tokens: maxTokens,
       messages,
-
       stream: true,
     };
 
@@ -144,7 +148,7 @@ export const anthropicProvider: ChatProvider = {
       body.system = system;
     }
 
-    if (isClaude5) {
+    if (isAdaptiveThinking) {
       /*
        * Claude 5 uses adaptive thinking. Do not send legacy temperature,
        * top_p, or top_k parameters to these current models.

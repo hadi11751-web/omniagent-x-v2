@@ -64,6 +64,14 @@ export const MODELS: ModelInfo[] = [
     capabilities: ["fast", "coding", "reasoning", "research"],
     vision: true,
   },
+  {
+    id: "claude-fable-5-1",
+    label: "Claude Fable 5.1 (Anthropic)",
+    provider: "anthropic",
+    execution: "cloud",
+    capabilities: ["coding", "reasoning", "research"],
+    vision: true,
+  },
 
   // ---------------------------------------------------------------------------
   // Google Gemini
