@@ -7,6 +7,7 @@ import { availableModels, providerFor, PROVIDERS } from "@/lib/providers";
 import { checkAndConsumeQuota, peekQuota, refundQuota } from "@/lib/quota";
 import { acquireConcurrency } from "@/lib/concurrency";
 import { classify, routeModel } from "@/lib/router";
+import { NEXUS_ID, nexusPlan } from "@/lib/nexus";
 import {
   rankFailoverCandidates,
   streamWithFailover,
@@ -238,10 +239,44 @@ export async function POST(request: Request) {
   const lastUser = lastUserMessage?.content ?? "";
   const hasImages = Boolean(lastUserMessage?.images?.length);
 
+  const isNexus = body.model === NEXUS_ID;
+
+  const nexusPlanResult = isNexus
+    ? nexusPlan(
+        lastUser,
+        models,
+        availableTools(),
+        hasImages,
+      )
+    : undefined;
+
   let model: ModelInfo | undefined;
   let capability: string | undefined;
 
-  if (body.autoRoute) {
+  if (isNexus) {
+    model = nexusPlanResult?.model;
+    capability = nexusPlanResult?.capability;
+
+    if (!model) {
+      if (nexusPlanResult?.capability === "private") {
+        return Response.json(
+          {
+            error:
+              "Nexus could not satisfy this private request because no configured local model is available. Cloud models are not used for private requests.",
+          },
+          { status: 503 },
+        );
+      }
+
+      if (hasImages) {
+        return badRequest(
+          "Nexus could not find a configured vision-capable model.",
+        );
+      }
+
+      return badRequest("Nexus could not find a usable model.");
+    }
+  } else if (body.autoRoute) {
     const routed = routeModel(lastUser, models);
     model = routed.model;
     capability = routed.capability;
@@ -253,7 +288,7 @@ export async function POST(request: Request) {
 
   let switchedForVision = false;
 
-  if (hasImages && !model?.vision) {
+  if (!isNexus && hasImages && !model?.vision) {
     const visionModel = models.find((candidate) => candidate.vision);
 
     if (visionModel) {
@@ -303,8 +338,18 @@ export async function POST(request: Request) {
   let streamOwnsConcurrency = false;
 
   try {
-    const toolsEnabled = body.toolsEnabled !== false && mode !== "blend";
-  const tools = toolsEnabled ? availableTools() : [];
+    const toolsEnabled =
+      body.toolsEnabled !== false && mode !== "blend";
+
+    const allTools = availableTools();
+
+    const tools = toolsEnabled
+      ? isNexus
+        ? allTools.filter((tool) =>
+            nexusPlanResult?.toolNames.includes(tool.name),
+          )
+        : allTools
+      : [];
 
   const systemParts = [DEFAULT_SYSTEM_PROMPT];
 
@@ -369,6 +414,13 @@ export async function POST(request: Request) {
       capability,
       mode,
     });
+
+    if (isNexus && nexusPlanResult) {
+      emit({
+        type: "status",
+        text: `Nexus selected ${model.label} for ${nexusPlanResult.capability}.`,
+      });
+    }
 
     if (switchedForVision) {
       emit({

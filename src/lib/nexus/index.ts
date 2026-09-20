@@ -1,4 +1,4 @@
-﻿import { classify } from "@/lib/router";
+import { classify } from "@/lib/router";
 import type {
   Capability,
   ModelInfo,
@@ -37,6 +37,12 @@ function selectModel(
     return undefined;
   }
 
+  if ((capability as Capability) === "private") {
+    return eligible.find(
+      (model) => model.execution === "local",
+    );
+  }
+
   const scored = eligible.map((model, index) => {
     let score = 0;
 
@@ -44,7 +50,7 @@ function selectModel(
       score += 100;
     }
 
-    if (capability === "private") {
+    if ((capability as Capability) === "private") {
       score += model.execution === "local" ? 100 : -100;
     } else {
       score += model.execution === "cloud" ? 10 : 0;

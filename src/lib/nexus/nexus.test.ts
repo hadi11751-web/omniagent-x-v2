@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { nexusPlan, NEXUS_ID, NEXUS_LABEL } from "./index";
 import type {
   ModelInfo,
@@ -150,6 +150,21 @@ describe("OmniAgent Nexus", () => {
     expect(plan.model?.id).toBe("local-private");
     expect(plan.retrieveMemory).toBe(false);
     expect(plan.toolNames).toEqual([]);
+  });
+  it("refuses cloud routing for private requests when no local model exists", () => {
+    const cloudOnlyModels = models.filter(
+      (model) => model.execution === "cloud",
+    );
+
+    const plan = nexusPlan(
+      "Keep this private and local only",
+      cloudOnlyModels,
+      tools,
+    );
+
+    expect(plan.capability).toBe("private");
+    expect(plan.model).toBeUndefined();
+    expect(plan.retrieveMemory).toBe(false);
   });
 
   it("requires a vision-capable model for image input", () => {
