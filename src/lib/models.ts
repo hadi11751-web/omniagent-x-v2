@@ -54,6 +54,7 @@ export const MODELS: ModelInfo[] = [
     provider: "anthropic",
     execution: "cloud",
     capabilities: ["coding", "reasoning", "research"],
+    vision: true,
   },
   {
     id: "claude-sonnet-5",
@@ -61,6 +62,7 @@ export const MODELS: ModelInfo[] = [
     provider: "anthropic",
     execution: "cloud",
     capabilities: ["fast", "coding", "reasoning", "research"],
+    vision: true,
   },
 
   // ---------------------------------------------------------------------------
@@ -135,6 +137,17 @@ export const MODELS: ModelInfo[] = [
   },
 
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Hugging Face
+  // ---------------------------------------------------------------------------
+  {
+    id: "Qwen/Qwen3.8-27B",
+    label: "Qwen 3.8 27B (Hugging Face)",
+    provider: "huggingface",
+    execution: "cloud",
+    capabilities: ["fast", "coding", "reasoning"],
+  },
+
   // Ollama
   // ---------------------------------------------------------------------------
   {
