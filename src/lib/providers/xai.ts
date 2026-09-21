@@ -70,11 +70,10 @@ export const xaiProvider: ChatProvider = {
   label: "xAI",
   execution: "cloud",
 
-  isConfigured: () =>
-    Boolean(process.env.XAI_API_KEY),
+  isConfigured: () => Boolean(process.env.XAI_API_KEY?.trim()),
 
   async *stream(request: ChatRequest) {
-    const key = process.env.XAI_API_KEY;
+    const key = process.env.XAI_API_KEY?.trim();
 
     if (!key) {
       throw new Error(

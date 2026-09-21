@@ -63,7 +63,15 @@ export const MODELS: ModelInfo[] = [
     execution: "cloud",
     capabilities: ["fast", "coding", "reasoning", "research"],
     vision: true,
+  },  {
+    id: "claude-haiku-4-5-20251001",
+    label: "Claude Haiku 4.5 (Anthropic)",
+    provider: "anthropic",
+    execution: "cloud",
+    capabilities: ["fast", "coding"],
+    vision: true,
   },
+
   {
     id: "claude-fable-5-1",
     label: "Claude Fable 5.1 (Anthropic)",

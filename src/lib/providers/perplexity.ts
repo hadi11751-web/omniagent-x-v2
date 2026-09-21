@@ -41,10 +41,10 @@ export const perplexityProvider: ChatProvider = {
   label: "Perplexity",
   execution: "cloud",
 
-  isConfigured: () => Boolean(process.env.PERPLEXITY_API_KEY),
+  isConfigured: () => Boolean(process.env.PERPLEXITY_API_KEY?.trim()),
 
   async *stream(request: ChatRequest) {
-    const key = process.env.PERPLEXITY_API_KEY;
+    const key = process.env.PERPLEXITY_API_KEY?.trim();
 
     if (!key) {
       throw new Error("PERPLEXITY_API_KEY is not configured");

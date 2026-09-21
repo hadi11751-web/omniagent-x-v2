@@ -1,4 +1,4 @@
-﻿import { parseSseDeltas, requestJson } from "@/lib/http";
+import { parseSseDeltas, requestJson } from "@/lib/http";
 import type { ChatMessage, ChatProvider, ChatRequest } from "@/lib/types";
 
 interface AnthropicEvent {
@@ -171,6 +171,7 @@ export const anthropicProvider: ChatProvider = {
           "content-type": "application/json",
           "x-api-key": key,
           "anthropic-version": "2023-06-01",
+          ...(process.env.ANTHROPIC_WORKSPACE_ID?.trim() ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID.trim() } : {}),
         },
         body: JSON.stringify(body),
         signal: request.signal,
