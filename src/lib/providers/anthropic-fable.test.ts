@@ -11,7 +11,7 @@ const SSE_BODY = [
   "",
 ].join("\n");
 
-describe("Claude Fable 5.1 integration", () => {
+describe("Claude Fable 5 integration", () => {
   beforeEach(() => {
     process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
 
@@ -35,7 +35,7 @@ describe("Claude Fable 5.1 integration", () => {
 
   it("exists in the catalogue with the official API ID", () => {
     const model = MODELS.find(
-      (entry) => entry.id === "claude-fable-5-1",
+      (entry) => entry.id === "claude-fable-5",
     );
 
     expect(model).toBeDefined();
@@ -44,11 +44,11 @@ describe("Claude Fable 5.1 integration", () => {
     expect(model?.vision).toBe(true);
   });
 
-  it("sends Fable 5.1 with adaptive thinking and the correct output budget", async () => {
+  it("sends Fable 5 with adaptive thinking and the correct output budget", async () => {
     const chunks: string[] = [];
 
     for await (const chunk of anthropicProvider.stream({
-      model: "claude-fable-5-1",
+      model: "claude-fable-5",
       messages: [{ role: "user", content: "hello" }],
     })) {
       chunks.push(chunk);
@@ -62,7 +62,7 @@ describe("Claude Fable 5.1 integration", () => {
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
 
-    expect(body.model).toBe("claude-fable-5-1");
+    expect(body.model).toBe("claude-fable-5");
     expect(body.max_tokens).toBe(128_000);
     expect(body.thinking).toEqual({ type: "adaptive" });
     expect(body.output_config).toEqual({ effort: "high" });

@@ -13,14 +13,6 @@ export const MODELS: ModelInfo[] = [
   // OpenAI
   // ---------------------------------------------------------------------------
   {
-    id: "gpt-6-astra",
-    label: "GPT-6 Astra (OpenAI)",
-    provider: "openai",
-    execution: "cloud",
-    capabilities: ["fast", "coding", "reasoning", "research"],
-    vision: true,
-  },
-  {
     id: "gpt-5.6-sol",
     label: "GPT-5.6 Sol (OpenAI)",
     provider: "openai",
@@ -73,8 +65,8 @@ export const MODELS: ModelInfo[] = [
   },
 
   {
-    id: "claude-fable-5-1",
-    label: "Claude Fable 5.1 (Anthropic)",
+    id: "claude-fable-5",
+    label: "Claude Fable 5 (Anthropic)",
     provider: "anthropic",
     execution: "cloud",
     capabilities: ["coding", "reasoning", "research"],

@@ -124,14 +124,14 @@ export const anthropicProvider: ChatProvider = {
     const ADAPTIVE_THINKING_MODELS = new Set([
       "claude-opus-5",
       "claude-sonnet-5",
-      "claude-fable-5-1",
+      "claude-fable-5",
     ]);
 
     const isAdaptiveThinking =
       ADAPTIVE_THINKING_MODELS.has(request.model);
 
     const maxTokens =
-      request.model === "claude-fable-5-1"
+      request.model === "claude-fable-5"
         ? 128_000
         : isAdaptiveThinking
           ? 16_384
