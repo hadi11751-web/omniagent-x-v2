@@ -1,12 +1,9 @@
 import { parseSseDeltas, requestJson } from "@/lib/http";
 import type { ChatProvider, ChatMessage, ChatRequest } from "@/lib/types";
 
-interface PerplexityChunk {
-  choices?: Array<{
-    delta?: {
-      content?: string | null;
-    };
-  }>;
+interface PerplexityEvent {
+  type?: string;
+  delta?: string;
   error?: {
     message?: string;
     code?: string;
@@ -18,22 +15,39 @@ function pickDelta(payload: unknown): string | undefined {
     return undefined;
   }
 
-  const chunk = payload as PerplexityChunk;
+  const event = payload as PerplexityEvent;
 
-  if (chunk.error) {
+  if (event.error) {
     throw new Error(
-      chunk.error.message ?? "Perplexity streaming request failed",
+      event.error.message ?? "Perplexity streaming request failed",
     );
   }
 
-  return chunk.choices?.[0]?.delta?.content ?? undefined;
+  if (event.type !== "response.output_text.delta") {
+    return undefined;
+  }
+
+  return event.delta ?? undefined;
 }
 
 function toWireMessage(message: ChatMessage) {
   return {
+    type: "message",
     role: message.role,
     content: message.content,
   };
+}
+
+function presetForModel(model: string) {
+  if (model === "sonar-deep-research") {
+    return "high";
+  }
+
+  if (model === "sonar-reasoning-pro") {
+    return "medium";
+  }
+
+  throw new Error(`Unsupported Perplexity model: ${model}`);
 }
 
 export const perplexityProvider: ChatProvider = {
@@ -56,27 +70,24 @@ export const perplexityProvider: ChatProvider = {
       throw new Error("Perplexity request contains no messages");
     }
 
-    const isDeepResearch =
-      request.model === "sonar-deep-research";
+    const isDeepResearch = request.model === "sonar-deep-research";
+    const preset = presetForModel(request.model);
 
     const body: Record<string, unknown> = {
-      model: request.model,
-      messages,
+      preset,
+      input: messages,
       stream: true,
     };
 
     if (isDeepResearch) {
-      body.reasoning_effort = "high";
-      body.max_tokens = 32768;
-    }
-
-    if (request.model === "sonar-reasoning-pro") {
-      body.max_tokens = 16384;
+      body.max_output_tokens = 32768;
+    } else {
+      body.max_output_tokens = 16384;
     }
 
     const response = await requestJson(
       "Perplexity",
-      "https://api.perplexity.ai/v1/sonar",
+      "https://api.perplexity.ai/v1/agent",
       {
         method: "POST",
         headers: {
