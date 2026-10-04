@@ -1,0 +1,72 @@
+Verification record for the seventh and eighth rounds.
+
+The tree that came back as omniagent-x-v2-full-audit-repaired.zip was checked by running the
+repository's own gates in the project environment. Nothing below is inferred from reading code:
+each line is a command and the exit status it returned.
+
+Against the tree exactly as it arrived
+
+  ./node_modules/.bin/tsc --noEmit --incremental false     exit 0, no output
+  ./node_modules/.bin/eslint . --max-warnings=0            exit 1
+      src/lib/tools/pinnedFetch.test.ts
+        61:9  warning  Expected an assignment or function call and instead saw an expression
+                       @typescript-eslint/no-unused-expressions
+  ./node_modules/.bin/vitest run                           exit 0, 51 files / 576 tests
+  ./node_modules/.bin/next build                           exit 0, 15/15 static pages,
+                                                           the lint warning above surfaced
+  npm audit --omit=dev                                     exit 0, 0 vulnerabilities
+  npm audit                                                exit 0, 0 vulnerabilities
+
+Against the repaired tree, after the seven changes listed under "Seventh audit" in
+OMNIAGENT_REPAIR_AUDIT.md
+
+  ./node_modules/.bin/tsc --noEmit --incremental false     exit 0, no output
+  ./node_modules/.bin/eslint . --max-warnings=0            exit 0, no output
+  ./node_modules/.bin/vitest run                           exit 0, 51 files / 577 tests
+  ./node_modules/.bin/next build                           exit 0, 15/15 static pages, no warnings
+  npm audit --omit=dev                                     exit 0, 0 vulnerabilities
+  npm audit                                                exit 0, 0 vulnerabilities
+
+Catalogue and pricing copy at the seventh pass, read from the built output rather than from the
+source that should produce it
+
+  .next/server/app/pricing.html    "18 models across 10 providers, 7 of them able to read images"
+
+Eighth pass - the model catalogue checked against live provider documentation, then repaired
+
+  ./node_modules/.bin/tsc --noEmit --incremental false     exit 0, no output
+  ./node_modules/.bin/eslint . --max-warnings=0            exit 0, no output
+  ./node_modules/.bin/vitest run                           exit 0, 52 files / 585 tests passed,
+                                                           1 skipped (the live model check, by design)
+  ./node_modules/.bin/next build                           exit 0, 15/15 static pages, no warnings
+  npm audit --omit=dev                                     exit 0, 0 vulnerabilities
+  npm audit                                                exit 1, 5 high, dev-only braces chain
+                                                           under eslint-config-next (GHSA-vfj7-8cjw-p6xm);
+                                                           braces@3.0.3 is the newest release, so there
+                                                           is no version to move to and nothing was
+                                                           downgraded to make the number read green
+
+  .next/server/app/pricing.html    "17 models across 10 providers, 6 of them able to read images"
+
+The live model check (src/lib/providers/live-smoke.test.ts) - what was and was not run here
+
+  ./node_modules/.bin/vitest run src/lib/providers/live-smoke.test.ts
+      exit 0, 1 skipped          no flag, so no network call - the correct offline state
+  npm test -- src/lib/providers/live-smoke.test.ts
+      exit 0, 1 skipped          the README command reaches the same file the same way
+  LIVE_PROVIDER_SMOKE=1 ./node_modules/.bin/vitest run src/lib/providers/live-smoke.test.ts
+      exit 1  "no provider key was found, so zero models were called"
+      the flag with no keys fails instead of reporting a vacuous pass
+
+  Not executed here: a case that actually reaches a provider and gets an answer. This workspace has no
+  .env.local (only .env.example) and outbound provider calls are blocked from it by policy, so the
+  answered-model path is reasoned through, not demonstrated. LIVE_PROVIDER_SMOKE=1 on a machine that
+  does have keys is what settles it - and because every other provider test stubs fetch, nothing in
+  the suite above can claim that a model talks.
+
+Not covered by any of the above: no live provider, Clerk, Upstash or Stripe call was made, so the
+two catalogue ids added at the seventh pass are proven to route to an adapter and not proven to be
+served to a particular account, and none of the eighth pass's renamed ids were called. Perplexity's
+migration to the Agent API is documented-derived: the payload shape, the preset mapping and the
+event parsing are pinned by src/lib/providers/perplexity.test.ts against a stubbed fetch, not against
+a real key. See OMNIAGENT_REPAIR_AUDIT.md for the full list.
